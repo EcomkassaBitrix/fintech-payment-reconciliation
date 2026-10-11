@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, Tuple
 from auth_guard import create_session, revoke_session
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
-MESSENGER_API_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
+DEFAULT_MESSENGER_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
 CHANNEL_PROVIDERS = {'telegram': 'ek_tg', 'whatsapp': 'ek_wa', 'max': 'ek_max'}
 CHANNEL_LABELS = {'telegram': 'Telegram', 'whatsapp': 'WhatsApp', 'max': 'Max'}
 CODE_TTL_MINUTES = 10
@@ -36,12 +36,19 @@ def hash_code(phone: str, code: str) -> str:
     return hashlib.sha256(f'{phone}:{code}'.encode('utf-8')).hexdigest()
 
 
-def send_to_messenger(channel: str, phone: str, text: str, timeout: float) -> Tuple[Optional[bool], str]:
+def messenger_url(cur) -> str:
+    '''Адрес сервиса сообщений и писем: из настроек платформы, иначе по умолчанию.'''
+    cur.execute(f'SELECT messenger_api_url FROM {SCHEMA}.platform_settings WHERE id = 1')
+    row = cur.fetchone()
+    return (row[0] if row and row[0] else DEFAULT_MESSENGER_URL).strip()
+
+
+def send_to_messenger(channel: str, phone: str, text: str, timeout: float, url: str) -> Tuple[Optional[bool], str]:
     api_key = os.environ.get('MESSENGER_API_KEY', '')
     if not api_key:
         return False, 'Отправка сообщений не настроена'
     req = urllib.request.Request(
-        MESSENGER_API_URL,
+        url,
         data=json.dumps({'provider': CHANNEL_PROVIDERS[channel], 'recipient': phone, 'message': text}).encode('utf-8'),
         headers={'Content-Type': 'application/json', 'X-Api-Key': api_key},
         method='POST'
@@ -103,7 +110,7 @@ def send_code(cur, conn, body: Dict[str, Any], context: Any) -> Dict[str, Any]:
         remaining = context.get_remaining_time_in_millis() / 1000.0
     except Exception:
         remaining = 5.0
-    ok, error = send_to_messenger(channel, phone, text, max(1.0, min(25.0, remaining - 1.0)))
+    ok, error = send_to_messenger(channel, phone, text, max(1.0, min(25.0, remaining - 1.0)), messenger_url(cur))
     if ok is False:
         cur.execute(f'UPDATE {SCHEMA}.auth_codes SET used_at = NOW() WHERE id = %s', (code_id,))
         conn.commit()

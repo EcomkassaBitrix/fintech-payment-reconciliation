@@ -26,6 +26,8 @@ CORS_HEADERS = {
 JOBS_URL = 'https://functions.poehali.dev/22902813-812b-495a-9ea0-8497b880c461'
 RESYNC_URL = 'https://functions.poehali.dev/0b50cd7c-94bc-4be9-824a-0bb119c6adef'
 TICK_BATCH = 15
+# Сервис отправки сообщений в мессенджеры и писем (если в настройках не задан свой адрес).
+DEFAULT_MESSENGER_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
 FETCH_ORDERS_URL = 'https://functions.poehali.dev/dc01171b-cd60-4a98-b96c-5d167bc1add8'
 # Окно авто-дозагрузки Екомкассы: документы, обновлённые за последние N часов.
 ECOMKASSA_AUTO_HOURS = 24
@@ -174,7 +176,7 @@ def load_settings(cur) -> Dict[str, Any]:
     cur.execute(f'''
         SELECT s.managing_company_id, c.name, c.inn, s.cron_enabled, s.cron_token,
                s.cron_last_tick_at, s.cron_last_result, s.updated_at, s.metrika_counter_id, s.cron_sources, s.cron_intervals,
-               s.maintenance_enabled, s.maintenance_message, s.maintenance_until
+               s.maintenance_enabled, s.maintenance_message, s.maintenance_until, s.messenger_api_url
         FROM {SCHEMA}.platform_settings s
         LEFT JOIN {SCHEMA}.companies c ON c.id = s.managing_company_id
         WHERE s.id = 1
@@ -185,7 +187,8 @@ def load_settings(cur) -> Dict[str, Any]:
         'cron_enabled': r[3], 'cron_token': r[4], 'cron_last_tick_at': r[5],
         'cron_last_result': r[6], 'updated_at': r[7], 'metrika_counter_id': r[8], 'cron_sources': r[9] or {}, 'cron_intervals': r[10] or {},
         'maintenance_enabled': bool(r[11]), 'maintenance_message': r[12],
-        'maintenance_until': r[13].isoformat() if r[13] else None
+        'maintenance_until': r[13].isoformat() if r[13] else None,
+        'messenger_api_url': r[14], 'messenger_api_url_default': DEFAULT_MESSENGER_URL
     }
 
 
@@ -487,7 +490,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     GET ?banners=1 - баннеры с текстом для страниц кабинета (без авторизации)
     GET ?requester_user_id=&section=banners - все баннеры для редактирования
     POST {action: "save_banner", requester_user_id, page, text, button_text, button_url, variant, is_active}
-    POST {action: "save", requester_user_id, managing_company_id, cron_enabled, metrika_counter_id}
+    POST {action: "save", requester_user_id, managing_company_id, cron_enabled, metrika_counter_id, messenger_api_url}
     POST {action: "save_maintenance", requester_user_id, maintenance_enabled, maintenance_message, maintenance_until}
          - режим техработ: сайт показывает заглушку всем, кроме администраторов платформы
     GET ?requester_user_id=&section=admins - сотрудники компании платформы и доступ к админке
@@ -610,6 +613,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 if not cur.fetchone():
                     return respond(400, {'error': 'Компания не найдена'})
             metrika = re.sub(r'\D', '', str(body.get('metrika_counter_id') or ''))[:20] or None
+            messenger = (str(body['messenger_api_url'] or '').strip().rstrip('/')[:500] or None) if 'messenger_api_url' in body else settings.get('messenger_api_url')
+            if messenger and not re.match(r'^https://[^\s/]+\.[^\s]+$', messenger):
+                return respond(400, {'error': 'Адрес отправки должен начинаться с https://'})
             keys = {src['key'] for src in CRON_SOURCES}
             sources = {k: bool(v) for k, v in (body['cron_sources'] if isinstance(body.get('cron_sources'), dict) else settings.get('cron_sources') or {}).items() if k in keys}
             intervals = {k: v for k, v in (body['cron_intervals'] if isinstance(body.get('cron_intervals'), dict) else settings.get('cron_intervals') or {}).items()
@@ -617,9 +623,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             cur.execute(f'''
                 UPDATE {SCHEMA}.platform_settings
                 SET managing_company_id = %s, cron_enabled = %s, metrika_counter_id = %s, cron_sources = %s, cron_intervals = %s,
-                    updated_by = %s, updated_at = NOW()
+                    messenger_api_url = %s, updated_by = %s, updated_at = NOW()
                 WHERE id = 1
-            ''', (company_id or None, bool(body.get('cron_enabled')), metrika, json.dumps(sources), json.dumps(intervals), requester))
+            ''', (company_id or None, bool(body.get('cron_enabled')), metrika, json.dumps(sources), json.dumps(intervals), messenger, requester))
             conn.commit()
             settings = load_settings(cur)
 

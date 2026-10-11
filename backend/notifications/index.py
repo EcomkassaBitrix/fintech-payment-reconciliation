@@ -26,16 +26,23 @@ KINDS = {
 }
 TRANSACTIONS_URL = 'https://functions.poehali.dev/d977ccf7-aaab-48a4-b418-798c34bc70ec'
 CHANNELS = {'max': 'ek_max', 'whatsapp': 'ek_wa', 'telegram': 'ek_tg', 'email': 'ek_email'}
-SEND_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
+DEFAULT_MESSENGER_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
 
 
-def send(channel: str, recipient: str, text: str) -> str:
+def messenger_url(cur) -> str:
+    '''Адрес сервиса сообщений и писем: из настроек платформы, иначе по умолчанию.'''
+    cur.execute(f'SELECT messenger_api_url FROM {SCHEMA}.platform_settings WHERE id = 1')
+    row = cur.fetchone()
+    return (row[0] if row and row[0] else DEFAULT_MESSENGER_URL).strip()
+
+
+def send(channel: str, recipient: str, text: str, url: str) -> str:
     '''Отправка через сервис сообщений. Returns: текст ошибки или "".'''
     api_key = os.environ.get('MESSENGER_API_KEY', '')
     if not api_key:
         return 'MESSENGER_API_KEY не настроен'
     req = urllib.request.Request(
-        SEND_URL,
+        url,
         data=json.dumps({'provider': CHANNELS[channel], 'recipient': recipient, 'message': text}).encode('utf-8'),
         headers={'Content-Type': 'application/json', 'X-Api-Key': api_key},
         method='POST'
@@ -73,6 +80,7 @@ def dispatch(cur, conn, company_id=None, limit: int = 5) -> Dict[str, int]:
     ids = [r[0] for r in cur.fetchall()]
     conn.commit()
     result = {'sent': 0, 'failed': 0}
+    url = messenger_url(cur) if ids else ''
     for delivery_id in ids:
         cur.execute(f'''
             SELECT d.channel, u.phone, u.email, n.title, n.message, c.name
@@ -85,7 +93,7 @@ def dispatch(cur, conn, company_id=None, limit: int = 5) -> Dict[str, int]:
         channel, phone, email, title, message, company_name = cur.fetchone()
         to = recipient_of(channel, phone, email)
         error = 'Не указан адрес получателя' if not to else send(
-            channel, to, f'{title} · {company_name or "Сверка"}\n\n{message}')
+            channel, to, f'{title} · {company_name or "Сверка"}\n\n{message}', url)
         cur.execute(f'''
             UPDATE {SCHEMA}.notification_deliveries SET status = %s, error = %s, updated_at = NOW() WHERE id = %s
         ''', ('failed' if error else 'sent', error or None, delivery_id))
@@ -288,7 +296,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 to = recipient_of(channel, row[0] if row else '', row[1] if row else '')
                 if not to:
                     return respond(400, {'error': 'В профиле не указан email' if channel == 'email' else 'В профиле нет номера'})
-                error = send(channel, to, 'Проверка уведомлений Сверки: сообщения будут приходить сюда.')
+                error = send(channel, to, 'Проверка уведомлений Сверки: сообщения будут приходить сюда.', messenger_url(cur))
                 if error:
                     return respond(502, {'error': f'Не удалось отправить: {error}'})
                 return respond(200, {'success': True})

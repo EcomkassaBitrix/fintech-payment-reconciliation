@@ -26,6 +26,8 @@ interface PlatformSettings {
   maintenance_enabled: boolean;
   maintenance_message: string | null;
   maintenance_until: string | null;
+  messenger_api_url: string | null;
+  messenger_api_url_default: string;
 }
 
 interface CompanyOption {
@@ -44,6 +46,7 @@ const AdminSettingsSection = () => {
   const [managingId, setManagingId] = useState<string>('');
   const [cronEnabled, setCronEnabled] = useState(false);
   const [metrikaId, setMetrikaId] = useState('');
+  const [messengerUrl, setMessengerUrl] = useState('');
   const [sources, setSources] = useState<CronSource[]>([]);
   const [sourceValues, setSourceValues] = useState<Record<string, boolean>>({});
   const [sourceIntervals, setSourceIntervals] = useState<Record<string, string>>({});
@@ -58,6 +61,7 @@ const AdminSettingsSection = () => {
     setManagingId(data.settings.managing_company_id ? String(data.settings.managing_company_id) : '');
     setCronEnabled(data.settings.cron_enabled);
     setMetrikaId(data.settings.metrika_counter_id || '');
+    setMessengerUrl(data.settings.messenger_api_url || '');
     const list = data.cron_sources || [];
     setSources(list);
     setSourceValues(Object.fromEntries(list.map((s) => [s.key, s.enabled])));
@@ -89,6 +93,7 @@ const AdminSettingsSection = () => {
           managing_company_id: managingId ? Number(managingId) : null,
           cron_enabled: cronEnabled,
           metrika_counter_id: metrikaId || null,
+          messenger_api_url: messengerUrl.trim() || null,
           cron_sources: sourceValues,
           cron_intervals: sourceIntervals
         })
@@ -126,6 +131,7 @@ const AdminSettingsSection = () => {
   const hasChanges = (managingId || '') !== (settings.managing_company_id ? String(settings.managing_company_id) : '')
     || cronEnabled !== settings.cron_enabled
     || metrikaId !== (settings.metrika_counter_id || '')
+    || messengerUrl.trim() !== (settings.messenger_api_url || '')
     || sources.some((s) => sourceValues[s.key] !== s.enabled || sourceIntervals[s.key] !== s.interval);
   const tickCommand = `curl -s -X POST ${api} -H 'Content-Type: application/json' -H 'X-Cron-Token: ${settings.cron_token}' -d '{"action":"tick"}'`;
 
@@ -191,6 +197,30 @@ const AdminSettingsSection = () => {
           />
           <p className="text-xs text-muted-foreground">
             Номер — цифры в названии счётчика на metrika.yandex.ru. Применится у посетителей после обновления страницы.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Icon name="Send" size={20} />
+            Сервис отправки сообщений и писем
+          </CardTitle>
+          <CardDescription>
+            Через этот адрес уходят коды входа, приглашения и уведомления в Telegram, WhatsApp, Max и на почту
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Input
+            value={messengerUrl}
+            onChange={(e) => setMessengerUrl(e.target.value)}
+            placeholder={settings.messenger_api_url_default}
+            className="font-mono"
+          />
+          <p className="text-xs text-muted-foreground">
+            Пусто — используется адрес по умолчанию: <span className="font-mono break-all">{settings.messenger_api_url_default}</span>.
+            Новый адрес применяется сразу после сохранения. Ключ доступа к сервису (MESSENGER_API_KEY) остаётся прежним.
           </p>
         </CardContent>
       </Card>

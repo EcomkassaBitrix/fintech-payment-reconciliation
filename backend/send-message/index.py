@@ -3,7 +3,23 @@ import os
 import urllib.request
 import urllib.error
 from typing import Dict, Any
+import psycopg2
 from auth_guard import guard
+
+SCHEMA = 't_p83864310_fintech_payment_reco'
+DEFAULT_MESSENGER_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
+
+
+def messenger_url() -> str:
+    '''Адрес сервиса сообщений и писем: из настроек платформы, иначе по умолчанию.'''
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    try:
+        cur = conn.cursor()
+        cur.execute(f'SELECT messenger_api_url FROM {SCHEMA}.platform_settings WHERE id = 1')
+        row = cur.fetchone()
+        return (row[0] if row and row[0] else DEFAULT_MESSENGER_URL).strip()
+    finally:
+        conn.close()
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -62,7 +78,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'isBase64Encoded': False
             }
         
-        api_url = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
+        api_url = messenger_url()
         
         payload = {
             'provider': provider,
