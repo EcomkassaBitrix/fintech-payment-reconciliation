@@ -51,6 +51,7 @@ const AdminSettingsSection = () => {
   const [sourceValues, setSourceValues] = useState<Record<string, boolean>>({});
   const [sourceIntervals, setSourceIntervals] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingMessenger, setIsSavingMessenger] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const apply = (data: { settings: PlatformSettings; companies: CompanyOption[]; cron_problems: string[]; cron_interval_min: number; cron_sources?: CronSource[] }) => {
@@ -93,7 +94,6 @@ const AdminSettingsSection = () => {
           managing_company_id: managingId ? Number(managingId) : null,
           cron_enabled: cronEnabled,
           metrika_counter_id: metrikaId || null,
-          messenger_api_url: messengerUrl.trim() || null,
           cron_sources: sourceValues,
           cron_intervals: sourceIntervals
         })
@@ -110,6 +110,28 @@ const AdminSettingsSection = () => {
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const saveMessenger = async () => {
+    if (!user || !settings) return;
+    setIsSavingMessenger(true);
+    try {
+      const res = await fetch(api, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_messenger', requester_user_id: user.user_id, messenger_api_url: messengerUrl.trim() || null })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSettings({ ...settings, messenger_api_url: data.messenger_api_url });
+        setMessengerUrl(data.messenger_api_url || '');
+        toast({ title: 'Адрес сохранён', description: data.messenger_api_url ? 'Сообщения и письма уходят через новый адрес' : 'Используется адрес по умолчанию' });
+      } else {
+        toast({ title: 'Ошибка', description: data.error, variant: 'destructive' });
+      }
+    } finally {
+      setIsSavingMessenger(false);
     }
   };
 
@@ -131,7 +153,6 @@ const AdminSettingsSection = () => {
   const hasChanges = (managingId || '') !== (settings.managing_company_id ? String(settings.managing_company_id) : '')
     || cronEnabled !== settings.cron_enabled
     || metrikaId !== (settings.metrika_counter_id || '')
-    || messengerUrl.trim() !== (settings.messenger_api_url || '')
     || sources.some((s) => sourceValues[s.key] !== s.enabled || sourceIntervals[s.key] !== s.interval);
   const tickCommand = `curl -s -X POST ${api} -H 'Content-Type: application/json' -H 'X-Cron-Token: ${settings.cron_token}' -d '{"action":"tick"}'`;
 
@@ -212,12 +233,23 @@ const AdminSettingsSection = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Input
-            value={messengerUrl}
-            onChange={(e) => setMessengerUrl(e.target.value)}
-            placeholder={settings.messenger_api_url_default}
-            className="font-mono"
-          />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              value={messengerUrl}
+              onChange={(e) => setMessengerUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveMessenger(); }}
+              placeholder={settings.messenger_api_url_default}
+              className="font-mono"
+            />
+            <Button
+              onClick={saveMessenger}
+              disabled={isSavingMessenger || messengerUrl.trim() === (settings.messenger_api_url || '')}
+              className="gap-2 shrink-0"
+            >
+              <Icon name={isSavingMessenger ? 'Loader2' : 'Save'} size={16} className={isSavingMessenger ? 'animate-spin' : ''} />
+              Сохранить
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
             Пусто — используется адрес по умолчанию: <span className="font-mono break-all">{settings.messenger_api_url_default}</span>.
             Новый адрес применяется сразу после сохранения. Ключ доступа к сервису (MESSENGER_API_KEY) остаётся прежним.

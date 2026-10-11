@@ -592,6 +592,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             conn.commit()
             return respond(200, {'success': True, 'members': platform_members(cur), 'can_manage': True})
 
+        if method == 'POST' and body.get('action') == 'save_messenger':
+            messenger = str(body.get('messenger_api_url') or '').strip().rstrip('/')[:500] or None
+            if messenger and not re.match(r'^https://[^\s/]+\.[^\s]+$', messenger):
+                return respond(400, {'error': 'Адрес отправки должен начинаться с https://'})
+            cur.execute(f'''
+                UPDATE {SCHEMA}.platform_settings SET messenger_api_url = %s, updated_by = %s, updated_at = NOW() WHERE id = 1
+            ''', (messenger, requester))
+            conn.commit()
+            return respond(200, {'success': True, 'messenger_api_url': messenger})
+
         if method == 'POST' and body.get('action') == 'save_maintenance':
             until = str(body.get('maintenance_until') or '').strip() or None
             cur.execute(f'''
