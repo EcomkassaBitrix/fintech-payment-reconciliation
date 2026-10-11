@@ -1,0 +1,49 @@
+{
+  "info": {
+    "name": "Точка API — клиент, мерчант, TID",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://enter.tochka.com/uapi" },
+    { "key": "token", "value": "ВСТАВЬТЕ_JWT_ТОКЕН" },
+    { "key": "customerCode", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Список клиентов (customerCode)",
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "const list = (pm.response.json().Data || {}).Customer || [];",
+          "const biz = list.find(c => c.customerType === 'Business') || list[0];",
+          "if (biz) { pm.collectionVariables.set('customerCode', biz.customerCode); }",
+          "list.forEach(c => console.log(c.customerType, c.customerCode, c.shortName || c.fullName));"
+        ]}
+      }],
+      "request": { "method": "GET", "url": "{{base_url}}/open-banking/v1.0/customers" }
+    },
+    {
+      "name": "2. Данные клиента",
+      "request": { "method": "GET", "url": "{{base_url}}/open-banking/v1.0/customers/{{customerCode}}" }
+    },
+    {
+      "name": "3. Счета (accountId)",
+      "request": { "method": "GET", "url": "{{base_url}}/open-banking/v1.0/accounts" }
+    },
+    {
+      "name": "4. Торговые точки (merchantId + TID)",
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "const list = (pm.response.json().Data || {}).Retailer || [];",
+          "list.forEach(r => console.log(r.name, 'merchantId=' + r.merchantId, 'TID=' + r.terminalId, r.status));"
+        ]}
+      }],
+      "request": { "method": "GET", "url": "{{base_url}}/acquiring/v1.0/retailers?customerCode={{customerCode}}" }
+    }
+  ]
+}
