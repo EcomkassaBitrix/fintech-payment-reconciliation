@@ -2,9 +2,10 @@ import json
 import re
 import os
 import socket
+import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional
@@ -26,7 +27,8 @@ CORS_HEADERS = {
 # кабинет и открытием страниц. При включённом cron их вызывает планировщик.
 JOBS_URL = 'https://functions.poehali.dev/22902813-812b-495a-9ea0-8497b880c461'
 RESYNC_URL = 'https://functions.poehali.dev/0b50cd7c-94bc-4be9-824a-0bb119c6adef'
-TICK_BATCH = 15
+# Компаний за шаг: все задачи шага стартуют одновременно, у базы ограничено число подключений.
+TICK_BATCH = 3
 # Сервис отправки сообщений в мессенджеры и писем (если в настройках не задан свой адрес).
 DEFAULT_MESSENGER_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
 FETCH_ORDERS_URL = 'https://functions.poehali.dev/dc01171b-cd60-4a98-b96c-5d167bc1add8'
@@ -38,6 +40,7 @@ OFD_URL = 'https://functions.poehali.dev/c7fad594-b60b-47fb-8f73-31b629f1e0a2'
 # Ежедневная проверка «платежи без чека за вчера» (backend/notifications, action=dispatch, daily).
 NOTIFICATIONS_URL = 'https://functions.poehali.dev/8f4541fc-6ff8-4816-a954-324e4278743d'
 BANK_URL = 'https://functions.poehali.dev/916892e2-fd4d-4106-8d92-a95be195aa99'
+SELF_URL = 'https://functions.poehali.dev/9e410f34-57f5-40ff-85f6-ccc802b812d9'
 
 # Источники, которые планировщик загружает сам. Админ включает/выключает каждый
 # (platform_settings.cron_sources: {key: bool}); нет записи - включён.
@@ -224,6 +227,7 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
     не дожидаясь их окончания. Компаний больше TICK_BATCH - берём по кругу,
     следующая порция - на следующем шаге.
     '''
+    tick_started = time.time()
     # Пустые компании (ничего не настроено) пропускаем: нужна хотя бы одна активная
     # интеграция или активный сценарий автоматизации.
     cur.execute(f'''
@@ -393,14 +397,29 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
     for integration_id, company_id, date_from, date_to in bank_jobs:
         tasks.append((company_id, BANK_URL, {'integration_id': integration_id, 'company_id': company_id,
                                              'date_from': date_from, 'date_to': date_to}))
+    # Очередь передачи регистраций в CRM платформы - отдельным вызовом, не задерживая шаг.
+    try:
+        if platform_crm.load_settings(cur).get('is_enabled') and platform_crm.pending_count(cur):
+            tasks.append((0, SELF_URL, {'action': 'crm_process'}))
+    except Exception as e:
+        conn.rollback()
+        print(f'platform crm check failed: {e}')
     for _, _, task_body in tasks:
         task_body['cron_tick'] = tick_id
     errors: Dict[int, List[str]] = {}
+    print(f'[tick] prepared {len(tasks)} tasks in {time.time() - tick_started:.2f}s')
     if tasks:
-        with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
-            for (company_id, _, _), err in zip(tasks, pool.map(lambda t: call(t[1], t[2], 2.5), tasks)):
-                if err:
-                    errors.setdefault(company_id, []).append(err)
+        # Жёсткий предел на рассылку: отдельный urlopen может висеть дольше своего тайм-аута
+        # (соединение + TLS + ответ), а шаг обязан уложиться в тайм-аут функции.
+        pool = ThreadPoolExecutor(max_workers=len(tasks))
+        futures = {pool.submit(call, t[1], t[2], 1.2): t[0] for t in tasks}
+        done, _ = wait(futures, timeout=1.6)
+        for f in done:
+            err = f.result()
+            if err:
+                errors.setdefault(futures[f], []).append(err)
+        pool.shutdown(wait=False)
+    print(f'[tick] tasks sent in {time.time() - tick_started:.2f}s')
     summary = {'companies': len(company_ids), 'total_companies': len(all_ids), 'failed': len(errors),
                'started': {'ofd': len(ofd_ids), 'bank': len(bank_jobs), 'ecomkassa': len(ecomkassa_ids),
                            'ecomkassa_receipts': len(receipts_due), 'automation': len(automation_due),
@@ -408,11 +427,6 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
                            'ecomkassa_search': [t[0] for t in tasks if t[2].get('cron_item') == 'search']},
                'errors': [{'company_id': k, 'errors': v} for k, v in list(errors.items())[:5]],
                'next_offset': next_offset}
-    try:
-        summary['platform_crm'] = platform_crm.process_queue(cur, conn, 2.0)
-    except Exception as e:
-        conn.rollback()
-        summary['platform_crm'] = {'error': str(e)[:200]}
     cur.execute(f'''
         UPDATE {SCHEMA}.platform_settings SET cron_last_tick_at = NOW(), cron_last_result = %s WHERE id = 1
     ''', (json.dumps(summary, ensure_ascii=False),))
@@ -538,7 +552,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if method == 'POST' and body.get('action') == 'crm_process':
             # Сигнал от регистрации/профиля/компании (подписан ключом сервиса - пропущен guard).
             if headers.get('x-service-sign'):
-                return respond(200, {'success': True, **platform_crm.process_queue(cur, conn)})
+                return respond(200, {'success': True, **platform_crm.process_queue(cur, conn, 1.8)})
 
         # Публично: баннеры для страниц личного кабинета (пустой текст - баннера нет).
         if method == 'GET' and params.get('banners') == '1':
@@ -611,7 +625,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 conn.rollback()
                 return respond(400, {'error': err})
             conn.commit()
-            stats = platform_crm.process_queue(cur, conn, 2.5)
+            stats = platform_crm.process_queue(cur, conn, 1.2)
             return respond(200, {'success': True, 'crm': platform_crm.load_settings(cur), 'processed': stats,
                                  'events': platform_crm.recent_events(cur), 'pending': platform_crm.pending_count(cur)})
 
@@ -619,7 +633,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if body.get('event_id'):
                 platform_crm.retry_event(cur, int(body['event_id']))
                 conn.commit()
-            stats = platform_crm.process_queue(cur, conn, 3.0)
+            stats = platform_crm.process_queue(cur, conn, 1.5)
             return respond(200, {'success': True, 'processed': stats, 'events': platform_crm.recent_events(cur),
                                  'pending': platform_crm.pending_count(cur)})
 

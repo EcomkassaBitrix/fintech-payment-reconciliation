@@ -389,7 +389,8 @@ def link_deals_by_pay_link(cur, company_id: int, deal_row_id: Optional[int] = No
     Точный ключ - работает и когда по сделке есть заказ от сценария, и когда в чеке нет почты.
     '''
     # Хуки копий сделки приходят одновременно - без блокировки каждый видит счёт свободным.
-    cur.execute('SELECT pg_advisory_xact_lock(%s)', (7300000 + int(company_id),))
+    # pg_advisory_xact_lock запрещён в базе - блокируем строку компании до конца транзакции.
+    cur.execute(f'SELECT id FROM {SCHEMA}.companies WHERE id = %s FOR UPDATE', (int(company_id),))
     cur.execute(f'''
         UPDATE {SCHEMA}.crm_deals d SET linked_receipt_id = m.receipt_id, linked_at = NOW()
         FROM (

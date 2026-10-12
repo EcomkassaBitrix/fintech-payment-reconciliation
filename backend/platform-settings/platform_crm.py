@@ -35,7 +35,7 @@ def valid_webhook(url: str) -> Optional[str]:
 
 
 def call(webhook_url: str, method: str, params: Optional[Dict[str, Any]] = None,
-         timeout: float = 6.0) -> Tuple[Any, str]:
+         timeout: float = 2.5) -> Tuple[Any, str]:
     req = urllib.request.Request(
         webhook_url.rstrip('/') + f'/{method}.json',
         data=json.dumps(params or {}).encode('utf-8'),
@@ -56,7 +56,7 @@ def call(webhook_url: str, method: str, params: Optional[Dict[str, Any]] = None,
 
 
 def batch(webhook_url: str, cmd: Dict[str, str]) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
-    result, err = call(webhook_url, 'batch', {'halt': 0, 'cmd': cmd}, timeout=8.0)
+    result, err = call(webhook_url, 'batch', {'halt': 0, 'cmd': cmd}, timeout=2.5)
     if err:
         return {}, {}, err
     result = result or {}
@@ -461,7 +461,7 @@ def handle_company(cur, webhook: str, settings: Dict[str, Any], event: Dict[str,
 HANDLERS = {'register': handle_register, 'profile': handle_profile, 'company': handle_company}
 
 
-def process_queue(cur, conn, budget_sec: float = 3.5) -> Dict[str, int]:
+def process_queue(cur, conn, budget_sec: float = 1.8) -> Dict[str, int]:
     '''Разбор очереди событий по порядку, пока есть время. Повторы: 1, 5, 15, 60 минут.'''
     settings = load_settings(cur)
     stats = {'done': 0, 'failed': 0, 'skipped': 0}
