@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import TransferOwnerDialog from '@/components/access/TransferOwnerDialog';
 
 interface User {
   id: number;
@@ -41,9 +42,11 @@ interface UsersTableProps {
   modules: Module[];
   onToggleStatus: (userId: number) => void;
   onDeleteUser: (userId: number) => void;
+  currentUserId?: number;
+  onTransferOwner?: (userId: number) => Promise<boolean>;
 }
 
-const UsersTable = ({ users, roles, modules, onToggleStatus, onDeleteUser }: UsersTableProps) => {
+const UsersTable = ({ users, roles, modules, onToggleStatus, onDeleteUser, currentUserId, onTransferOwner }: UsersTableProps) => {
   const getRoleInfo = (roleId: string) => {
     return roles.find(r => r.id === roleId) || roles[0];
   };
@@ -120,6 +123,14 @@ const UsersTable = ({ users, roles, modules, onToggleStatus, onDeleteUser }: Use
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-2">
+                  {user.role === 'owner' && user.id === currentUserId && onTransferOwner && (
+                    <TransferOwnerDialog
+                      candidates={users
+                        .filter((u) => u.id !== user.id && u.status === 'active')
+                        .map((u) => ({ id: u.id, fullName: u.fullName, phone: u.phone }))}
+                      onTransfer={onTransferOwner}
+                    />
+                  )}
                   {user.role !== 'owner' && (
                     <>
                       <Button 

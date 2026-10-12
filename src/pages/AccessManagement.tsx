@@ -73,7 +73,7 @@ const channelLabelMap: Record<string, string> = {
 };
 
 const AccessManagement = () => {
-  const { user, currentCompany } = useAuth();
+  const { user, currentCompany, refreshCompanies } = useAuth();
   const companyId = currentCompany?.id;
   const maxUsers = currentCompany?.max_users;
 
@@ -354,6 +354,29 @@ const AccessManagement = () => {
     }
   };
 
+  const transferOwner = async (userId: number): Promise<boolean> => {
+    if (!companyId) return false;
+    try {
+      const res = await fetch(functionUrls['company-users-update'], {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'transfer_owner', company_id: companyId, user_id: userId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const target = users.find(u => u.id === userId);
+        toast({ title: 'Роль владельца передана', description: target?.full_name || target?.phone });
+        await refreshCompanies();
+        await loadData();
+        return true;
+      }
+      toast({ title: 'Не удалось передать роль', description: data.error, variant: 'destructive' });
+    } catch {
+      toast({ title: 'Ошибка подключения', variant: 'destructive' });
+    }
+    return false;
+  };
+
   if (isPageLoading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -438,6 +461,8 @@ const AccessManagement = () => {
             modules={modules}
             onToggleStatus={toggleUserStatus}
             onDeleteUser={deleteUser}
+            currentUserId={user?.user_id}
+            onTransferOwner={currentCompany?.role_slug === 'owner' ? transferOwner : undefined}
           />
         </CardContent>
       </Card>
