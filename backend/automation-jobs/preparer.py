@@ -5,6 +5,7 @@ from ecomkassa_client import company_cash_register, get_receipt_atol
 import amocrm_crm
 import bitrix_crm
 import alfabank_api
+import yookassa_api
 import tochka_acquiring_api
 import moyklass_crm
 import realtycalendar_crm
@@ -33,7 +34,7 @@ def _payment(cur, payment_id: str) -> Optional[Dict[str, Any]]:
         'status': r[4], 'customer_email': r[5], 'customer_phone': r[6],
         'payment_provider': r[7], 'receipt_id': r[8], 'created_at': r[9].isoformat() if r[9] else None,
         'integration_id': r[10], 'provider_slug': r[11],
-        'raw': (r[12] if isinstance(r[12], dict) else json.loads(r[12] or '{}')) if r[11] in ('moyklass', 'realtycalendar', 'alfabank') else None
+        'raw': (r[12] if isinstance(r[12], dict) else json.loads(r[12] or '{}')) if r[11] in ('moyklass', 'realtycalendar', 'alfabank', 'yookassa') else None
     }
 
 
@@ -115,8 +116,43 @@ def _fetch_tochka_cart(cur, company_id: int, payment: Dict[str, Any]) -> Optiona
     return None
 
 
+def _fetch_yookassa_cart(cur, company_id: int, payment: Dict[str, Any]) -> Optional[str]:
+    '''Чеки платежа в ЮKassa (GET /v3/receipts?payment_id=) -> корзина. Чеков нет - пустая корзина.'''
+    config = _integration_config(cur, payment['integration_id'])
+    receipts, err = yookassa_api.fetch_receipts(config, str(payment['payment_id']))
+    if receipts is None:
+        return err
+    raw = payment.get('raw') or {}
+    pay = raw.get('payment') if isinstance(raw.get('payment'), dict) else {'id': payment['payment_id']}
+    yookassa_api.save_cart(cur, payment['integration_id'], company_id, {**pay, 'id': str(payment['payment_id'])}, receipts)
+    return None
+
+
+def _yookassa_single_item(payment: Dict[str, Any], data: Dict[str, Any],
+                          scenario: Dict[str, Any]) -> Tuple[str, Dict[str, Any], str]:
+    '''Платёж ЮKassa без чека в ЮKassa: одна позиция на сумму платежа, название - описание платежа.'''
+    raw = payment.get('raw') or {}
+    pay = raw.get('payment') if isinstance(raw.get('payment'), dict) else {}
+    refund = raw.get('refund') if isinstance(raw.get('refund'), dict) else {}
+    description = ' '.join(str(refund.get('description') or pay.get('description') or '').split())
+    order_no = payment.get('order_id') or payment['payment_id']
+    name = (description or f'Оплата заказа {order_no}')[:128]
+    amount = round(float(payment['amount'] or 0), 2)
+    if amount <= 0:
+        return 'error', data, 'У платежа ЮKassa нулевая сумма - чек не пробиваем'
+    data['items'] = [{'name': name, 'price': amount, 'quantity': 1, 'amount': amount,
+                      'payment_method': 'full_payment', 'payment_object': 'service',
+                      'tax': (scenario.get('template') or {}).get('vat') or 'none'}]
+    data['items_source'] = 'ЮKassa (описание платежа)'
+    source = 'описание платежа' if description else 'описания нет, взят номер заказа'
+    return 'ready', data, (
+        f"Чека в ЮKassa нет - чек одной позицией «{name}» на {amount:.2f} ₽ "
+        f"({source}, платёж {payment['payment_id']}). Почта покупателя - из шаблона действия"
+    )
+
+
 # Провайдеры, у которых корзина приходит в уведомлении и без неё чек не собрать.
-CART_FROM_PROVIDER = {'tbank': 'Т-Банк', 'alfabank': 'Альфа-Банк', 'tochka_acquiring': 'Точка'}
+CART_FROM_PROVIDER = {'tbank': 'Т-Банк', 'alfabank': 'Альфа-Банк', 'tochka_acquiring': 'Точка', 'yookassa': 'ЮKassa'}
 
 
 def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Dict[str, Any], str]:
@@ -191,9 +227,10 @@ def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Di
     provider_name = CART_FROM_PROVIDER.get(payment['provider_slug'])
     if provider_name:
         cart = _cart(cur, payment['integration_id'], str(payment['payment_id']))
-        if (not cart or not cart['items']) and payment['provider_slug'] in ('alfabank', 'tochka_acquiring'):
-            # У Альфа-Банка и Точки состав заказа не приходит в уведомлении - дозапрашиваем у банка.
-            fetch = _fetch_alfabank_cart if payment['provider_slug'] == 'alfabank' else _fetch_tochka_cart
+        if (not cart or not cart['items']) and payment['provider_slug'] in ('alfabank', 'tochka_acquiring', 'yookassa'):
+            # У Альфа-Банка, Точки и ЮKassa состав заказа не приходит в уведомлении - дозапрашиваем.
+            fetch = {'alfabank': _fetch_alfabank_cart, 'tochka_acquiring': _fetch_tochka_cart,
+                     'yookassa': _fetch_yookassa_cart}[payment['provider_slug']]
             cart_error = fetch(cur, job['company_id'], payment)
             cart = _cart(cur, payment['integration_id'], str(payment['payment_id']))
             if not cart:
@@ -204,6 +241,8 @@ def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Di
             if payment['provider_slug'] == 'tochka_acquiring':
                 return 'error', data, ('В платёжной ссылке Точки нет товаров - для чека передавайте Items '
                                        'при создании ссылки (метод с чеком payments_with_receipt)')
+            if payment['provider_slug'] == 'yookassa':
+                return _yookassa_single_item(payment, data, scenario)
             if payment['provider_slug'] == 'alfabank':
                 if payment.get('payment_provider') == 'СБП' and not payment.get('order_id'):
                     return 'error', data, ('Оплата по статическому QR-коду СБП - у такого платежа нет корзины. '

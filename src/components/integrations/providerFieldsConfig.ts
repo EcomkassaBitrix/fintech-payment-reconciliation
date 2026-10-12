@@ -149,12 +149,22 @@ export const ALFABANK_NOTIFY_OPTIONS = [
   { key: 'notify_on_canceled', label: 'Отменён (reversed)' }
 ];
 
+export const YOOKASSA_NOTIFY_OPTIONS = [
+  { key: 'notify_on_confirmed', label: 'Платёж успешен (payment.succeeded)' },
+  { key: 'notify_on_authorized', label: 'Ждёт подтверждения (payment.waiting_for_capture)' },
+  { key: 'notify_on_canceled', label: 'Отменён магазином (payment.canceled)' },
+  { key: 'notify_on_rejected', label: 'Не оплачен (payment.canceled — отказ банка, истёк срок)' },
+  { key: 'notify_on_refunded', label: 'Возврат (refund.succeeded)' }
+];
+
 // Варианты «Уведомления о статусах платежей» по провайдеру - и для настроек интеграции, и для запуска сценария.
 export const notifyOptionsFor = (slug?: string) =>
   slug === 'tbank'
     ? TBANK_NOTIFY_OPTIONS
     : slug === 'alfabank'
       ? ALFABANK_NOTIFY_OPTIONS
+      : slug === 'yookassa'
+      ? YOOKASSA_NOTIFY_OPTIONS
       : slug === 'tochka_acquiring'
         ? TOCHKA_ACQUIRING_NOTIFY_OPTIONS
         : slug === 'ecomkassa_gateway'
@@ -213,6 +223,10 @@ export const PROVIDER_FIELDS: Record<string, FieldConfig[]> = {
     { key: 'user_name', label: 'Логин API-пользователя', type: 'text', placeholder: 'r-shop-api', hint: 'Учётная запись магазина с окончанием -api из письма Альфа-Банка' },
     { key: 'password', label: 'Пароль API-пользователя', type: 'password', placeholder: '•••••••••', hint: 'Логин и пароль проверим у банка при сохранении' },
     { key: 'callback_secret', label: 'Callback токен (необязательно)', type: 'password', placeholder: '•••••••••', required: false, hint: 'ЛК банка → Callback уведомления → тип подписи «Симметричный» → кнопка «Сгенерировать» рядом с полем «Callback токен» → скопируйте токен сюда. Пусто — уведомления принимаются без проверки подписи' }
+  ],
+  yookassa: [
+    { key: 'shop_id', label: 'shopId', type: 'text', placeholder: '123456', hint: 'ЮKassa → Интеграция → Ключи API → shopId (только цифры)' },
+    { key: 'secret_key', label: 'Секретный ключ', type: 'password', placeholder: 'live_•••••••••', hint: 'Там же: «Выпустить секретный ключ». Ключ начинается с live_ (боевой) или test_ (тестовый магазин). По нему проверяем каждое уведомление в ЮKassa' }
   ],
   tbank: [
     { key: 'terminal_id', label: 'Terminal ID', type: 'text', placeholder: '1234567890', hint: 'Найдите в ЛК Т-Банк → Настройки → Терминалы' },
@@ -327,7 +341,7 @@ export const PROVIDER_FIELDS: Record<string, FieldConfig[]> = {
 
 // Провайдеры, для которых наш сервис принимает входящие вебхуки.
 // Только для них имеет смысл показывать URL для вебхука и переадресацию.
-const PROVIDERS_WITH_INCOMING_WEBHOOK = ['tbank', 'alfabank', 'tochka_acquiring', 'ecomkassa_gateway', 'moyklass', 'realtycalendar'];
+const PROVIDERS_WITH_INCOMING_WEBHOOK = ['tbank', 'alfabank', 'yookassa', 'tochka_acquiring', 'ecomkassa_gateway', 'moyklass', 'realtycalendar'];
 
 export const buildDefaultConfig = (slug: string): ConfigState => {
   const fields = PROVIDER_FIELDS[slug] || [];
@@ -340,7 +354,7 @@ export const buildDefaultConfig = (slug: string): ConfigState => {
 
 // Платёжки, по которым чек делаем сами из корзины: после подключения предлагаем сценарий чеков.
 // Шлюз Екомкассы сюда не входит - чек по нему пробивает сама Екомкасса.
-const PROVIDERS_WITH_RECEIPT_SCENARIO = ['tbank', 'alfabank', 'tochka_acquiring', 'moyklass', 'realtycalendar'];
+const PROVIDERS_WITH_RECEIPT_SCENARIO = ['tbank', 'alfabank', 'yookassa', 'tochka_acquiring', 'moyklass', 'realtycalendar'];
 export const suggestsReceiptScenario = (slug?: string) => !!slug && PROVIDERS_WITH_RECEIPT_SCENARIO.includes(slug);
 
 export const acceptsIncomingWebhook = (slug?: string) => !!slug && PROVIDERS_WITH_INCOMING_WEBHOOK.includes(slug);

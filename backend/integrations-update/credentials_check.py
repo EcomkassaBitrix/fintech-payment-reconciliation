@@ -211,9 +211,35 @@ def check_moyklass(config: Dict[str, Any]) -> Result:
         return _unavailable('«Мой Класс»', str(e)[:100])
 
 
+def check_yookassa(config: Dict[str, Any]) -> Result:
+    '''ЮKassa: GET /v3/me по shopId + секретному ключу. 401 - неверная пара, иначе верна.'''
+    import base64
+    shop_id = str(config.get('shop_id') or '').strip()
+    secret = str(config.get('secret_key') or '').strip()
+    if not shop_id or not secret:
+        return False, 'Укажите shopId и секретный ключ ЮKassa'
+    if not shop_id.isdigit():
+        return False, 'shopId ЮKassa состоит только из цифр - скопируйте его из раздела «Интеграция → Ключи API»'
+    auth = base64.b64encode(f'{shop_id}:{secret}'.encode('utf-8')).decode('ascii')
+    req = urllib.request.Request('https://api.yookassa.ru/v3/me', headers={'Authorization': f'Basic {auth}'})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode('utf-8') or '{}')
+        if str(data.get('account_id') or shop_id) != shop_id:
+            return False, 'Секретный ключ относится к другому магазину ЮKassa'
+        return True, None
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return False, 'ЮKassa не приняла shopId и секретный ключ - проверьте их в «Интеграция → Ключи API»'
+        return _unavailable('ЮKassa', f'ошибка {e.code}')
+    except Exception as e:
+        return _unavailable('ЮKassa', str(e)[:100])
+
+
 CHECKERS: Dict[str, Callable[[Dict[str, Any]], Result]] = {
     'tbank': check_tbank,
     'alfabank': check_alfabank,
+    'yookassa': check_yookassa,
     'tochka_acquiring': check_tochka_acquiring,
     'bitrix24': check_bitrix24,
     'moyklass': check_moyklass,

@@ -89,6 +89,14 @@ const IntegrationSuccessStep = ({
                     <li>Для чеков передавайте товары (Items) при создании платёжной ссылки</li>
                     <li>Подпись каждого вебхука проверяем ключом Точки автоматически</li>
                   </ol>
+                ) : selectedProvider.slug === 'yookassa' ? (
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                    <li>ЮKassa → Интеграция → HTTP-уведомления: вставьте этот URL в поле «URL для уведомлений»</li>
+                    <li>Отметьте события: payment.succeeded, refund.succeeded (по желанию — payment.waiting_for_capture и payment.canceled) и сохраните</li>
+                    <li>Каждое уведомление сверяем с ЮKassa по shopId и секретному ключу — поддельные не примутся</li>
+                    <li>Почты покупателя в уведомлении ЮKassa нет: укажите «Почту по умолчанию» в шаблоне действия сценария чеков</li>
+                    <li>Если магазин отправляет чеки через ЮKassa, позиции чека берём оттуда, иначе — одна позиция на сумму с описанием платежа</li>
+                  </ol>
                 ) : selectedProvider.slug === 'alfabank' ? (
                   <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                     <li>Напишите в поддержку интернет-эквайринга Альфа-Банка</li>

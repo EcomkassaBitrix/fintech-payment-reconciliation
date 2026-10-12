@@ -10,6 +10,7 @@ from form_parser import parse_webhook_body
 from inbox import save_event, mark_processed
 import tbank_handler
 import alfabank_handler
+import yookassa_api
 import tochka_acquiring_handler
 import bitrix24_handler
 import crm_link
@@ -34,6 +35,7 @@ CORS_HEADERS = {
 EVENT_TYPE_BY_PROVIDER = {
     'tbank': 'payment_status_changed',
     'alfabank': 'payment_status_changed',
+    'yookassa': 'payment_status_changed',
     'tochka_acquiring': 'payment_status_changed',
     'bitrix24': 'deal_updated',
     'amocrm': 'lead_updated',
@@ -252,6 +254,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 conn.commit()
                 return {
                     'statusCode': 403,
+                    'headers': {'Content-Type': 'application/json'},
+                    'body': json.dumps({'error': handler_error}, ensure_ascii=False),
+                    'isBase64Encoded': False
+                }
+        elif provider_slug == 'yookassa':
+            signature_valid, webhook_payment_id, handler_error, skip_note = yookassa_api.process(
+                cur, integration_id, company_id, config, webhook_settings, webhook_data
+            )
+            if not signature_valid:
+                mark_processed(cur, event_id, 'rejected', handler_error)
+                conn.commit()
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json'},
+                    'body': json.dumps({'ok': False, 'error': handler_error}, ensure_ascii=False),
+                    'isBase64Encoded': False
+                }
+            if handler_error and yookassa_api.is_retryable(handler_error):
+                # ЮKassa недоступна: не 200 - она повторит уведомление (до 24 часов).
+                mark_processed(cur, event_id, 'failed', handler_error)
+                conn.commit()
+                return {
+                    'statusCode': 503,
                     'headers': {'Content-Type': 'application/json'},
                     'body': json.dumps({'error': handler_error}, ensure_ascii=False),
                     'isBase64Encoded': False
