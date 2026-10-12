@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import AdminPlaceholder from '@/components/admin/AdminPlaceholder';
 import AdminCompaniesSection from '@/components/admin/AdminCompaniesSection';
 import AdminRolesSection from '@/components/admin/AdminRolesSection';
 import AdminSupportAccessSection from '@/components/admin/AdminSupportAccessSection';
+import AdminPaymentProvidersSection from '@/components/admin/AdminPaymentProvidersSection';
 import AdminActionTemplatesSection from '@/components/admin/AdminActionTemplatesSection';
 import AdminSettingsSection from '@/components/admin/AdminSettingsSection';
 import AdminTariffsSection from '@/components/admin/AdminTariffsSection';
@@ -11,7 +13,8 @@ import AdminCasesSection from '@/components/admin/AdminCasesSection';
 import AdminBannersSection from '@/components/admin/AdminBannersSection';
 
 const Admin = () => {
-  const [activeSection, setActiveSection] = useState('companies');
+  const [searchParams] = useSearchParams();
+  const [activeSection, setActiveSection] = useState(searchParams.get('section') || 'companies');
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,6 +27,7 @@ const Admin = () => {
         {activeSection === 'action_templates' && <AdminActionTemplatesSection />}
         {activeSection === 'settings' && <AdminSettingsSection />}
         {activeSection === 'tariffs' && <AdminTariffsSection />}
+        {activeSection === 'payments' && <AdminPaymentProvidersSection />}
         {activeSection === 'banners' && <AdminBannersSection />}
         {activeSection === 'cases' && <AdminCasesSection />}
         {activeSection === 'integrations' && (

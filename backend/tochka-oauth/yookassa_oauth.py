@@ -7,7 +7,7 @@ import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
 import psycopg2
-from auth_guard import guard
+from auth_guard import guard, is_platform_admin
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 PROVIDER_SLUG = 'yookassa'
@@ -73,104 +73,113 @@ def shop_info(token: str) -> Tuple[Optional[Dict[str, Any]], Optional[int]]:
         return None, 0
 
 
-def grant_row(cur, company_id: int):
+def _provider_row(cur, slug: str):
     cur.execute(f'''
-        SELECT access_token, scope, expires_at, created_at, updated_at FROM {SCHEMA}.company_bank_oauth_grants
-        WHERE company_id = %s AND provider_slug = %s AND revoked_at IS NULL
-          AND (expires_at IS NULL OR expires_at > NOW())
-    ''', (company_id, PROVIDER_SLUG))
+        SELECT slug, name, description, auth_type, is_enabled, shop_id, is_test, token_expires_at, connected_at,
+               access_token IS NOT NULL AND (token_expires_at IS NULL OR token_expires_at > NOW()),
+               (SELECT COALESCE(NULLIF(full_name, ''), phone) FROM {SCHEMA}.app_users WHERE id = connected_by)
+        FROM {SCHEMA}.platform_payment_providers WHERE slug = %s
+    ''', (slug,))
     return cur.fetchone()
+
+
+def _provider_json(r) -> Dict[str, Any]:
+    return {
+        'slug': r[0], 'name': r[1], 'description': r[2], 'auth_type': r[3], 'is_enabled': r[4],
+        'shop_id': r[5], 'is_test': r[6], 'token_expires_at': r[7], 'connected_at': r[8],
+        'connected': bool(r[9]), 'connected_by': r[10],
+        'configured': is_configured() if r[0] == PROVIDER_SLUG else False,
+    }
 
 
 def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     '''
-    Подключение магазина ЮKassa по OAuth (партнёрское API) от имени компании.
-    GET  ?action=status&company_id=..        -> настроено ли приложение, подключён ли магазин
-    GET  ?action=authorize_url&company_id=.. -> ссылка на выдачу прав в ЮKassa
-    POST {code, company_id}                  -> обмен кода на токен, проверка магазина, сохранение
-    POST {action: "disconnect", company_id}  -> отключить магазин (отозвать у себя)
+    Провайдеры приёма оплаты платформы (раздел админки «Оплата»). Только админ платформы.
+    GET  ?action=list                        -> список провайдеров и состояние подключения
+    GET  ?action=authorize_url               -> ссылка на выдачу прав магазина ЮKassa платформе
+    GET  ?action=check                       -> проверить магазин по токену (GET /v3/me)
+    POST {code}                              -> обмен кода на токен, сохранение
+    POST {action: "toggle", slug, enabled}   -> включить/выключить провайдера
+    POST {action: "disconnect", slug}        -> отключить магазин
     '''
-    denied = guard(event)
+    denied = guard(event, check_company=False)
     if denied:
         return denied
-
+    user_id = event.get('session_user_id')
     method = event.get('httpMethod', 'GET')
     conn = psycopg2.connect(os.environ['DATABASE_URL'])
     cur = conn.cursor()
     try:
+        if not user_id or not is_platform_admin(cur, user_id):
+            return _resp(403, {'error': 'Доступ только для администратора платформы'})
+
         if method == 'GET':
             params = event.get('queryStringParameters') or {}
-            company_id = params.get('company_id')
-            if not company_id:
-                return _resp(400, {'error': 'company_id required'})
-            action = params.get('action')
-
-            if action == 'status':
-                row = grant_row(cur, int(company_id))
-                shop = None
-                if row and params.get('check') == '1':
-                    shop, _ = shop_info(row[0])
-                return _resp(200, {
-                    'configured': is_configured(),
-                    'connected': bool(row),
-                    'shop_id': row[1] if row else None,
-                    'connected_at': row[4] if row else None,
-                    'expires_at': row[2] if row else None,
-                    'shop': shop,
-                })
-
+            action = params.get('action') or 'list'
+            if action == 'list':
+                cur.execute(f'SELECT slug FROM {SCHEMA}.platform_payment_providers ORDER BY sort_order, id')
+                slugs = [r[0] for r in cur.fetchall()]
+                return _resp(200, {'success': True, 'providers': [_provider_json(_provider_row(cur, s)) for s in slugs]})
             if action == 'authorize_url':
                 if not is_configured():
-                    return _resp(200, {'success': False, 'error': 'Подключение ЮKassa ещё не настроено на платформе'})
+                    return _resp(200, {'success': False, 'error': 'Не заданы ключи приложения ЮKassa (YOOKASSA_CLIENT_ID / YOOKASSA_CLIENT_SECRET)'})
                 query = urllib.parse.urlencode({
                     'response_type': 'code',
                     'client_id': os.environ['YOOKASSA_CLIENT_ID'],
-                    'state': str(company_id),
+                    'state': 'platform',
                 })
                 return _resp(200, {'success': True, 'authorize_url': f'{AUTHORIZE_URL}?{query}'})
-
+            if action == 'check':
+                cur.execute(f'SELECT access_token FROM {SCHEMA}.platform_payment_providers WHERE slug = %s', (PROVIDER_SLUG,))
+                row = cur.fetchone()
+                if not row or not row[0]:
+                    return _resp(200, {'success': False, 'error': 'Магазин не подключён'})
+                shop, code = shop_info(row[0])
+                if not shop:
+                    return _resp(200, {'success': False, 'error': f'ЮKassa не ответила (код {code}) — переподключите магазин'})
+                return _resp(200, {'success': True, 'shop': shop})
             return _resp(400, {'error': 'Unknown action'})
 
         if method == 'POST':
             body = json.loads(event.get('body') or '{}')
-            company_id = body.get('company_id')
-            if not company_id:
-                return _resp(400, {'error': 'company_id required'})
-
-            if body.get('action') == 'disconnect':
+            action = body.get('action')
+            if action == 'toggle':
                 cur.execute(f'''
-                    UPDATE {SCHEMA}.company_bank_oauth_grants SET revoked_at = NOW(), updated_at = NOW()
-                    WHERE company_id = %s AND provider_slug = %s AND revoked_at IS NULL
-                ''', (int(company_id), PROVIDER_SLUG))
+                    UPDATE {SCHEMA}.platform_payment_providers SET is_enabled = %s, updated_at = NOW()
+                    WHERE slug = %s RETURNING slug
+                ''', (bool(body.get('enabled')), body.get('slug')))
+                if not cur.fetchone():
+                    return _resp(404, {'error': 'Провайдер не найден'})
                 conn.commit()
-                return _resp(200, {'success': True})
+                return _resp(200, {'success': True, 'provider': _provider_json(_provider_row(cur, body.get('slug')))})
+            if action == 'disconnect':
+                cur.execute(f'''
+                    UPDATE {SCHEMA}.platform_payment_providers SET access_token = NULL, shop_id = NULL,
+                        token_expires_at = NULL, is_enabled = false, updated_at = NOW()
+                    WHERE slug = %s
+                ''', (body.get('slug'),))
+                conn.commit()
+                return _resp(200, {'success': True, 'provider': _provider_json(_provider_row(cur, body.get('slug')))})
 
             code = str(body.get('code') or '').strip()
             if not code:
                 return _resp(400, {'error': 'code required'})
             if not is_configured():
-                return _resp(200, {'success': False, 'error': 'Подключение ЮKassa ещё не настроено на платформе'})
+                return _resp(200, {'success': False, 'error': 'Не заданы ключи приложения ЮKassa'})
             token_data, err = exchange_code(code)
             if not token_data:
                 return _resp(200, {'success': False, 'error': f'{err}. Код подтверждения действует 5 минут — попробуйте подключить ещё раз'})
             token = token_data['access_token']
             shop, _ = shop_info(token)
-            shop_id = str((shop or {}).get('account_id') or '') or None
             expires_in = int(token_data.get('expires_in') or 0)
             cur.execute(f'''
-                INSERT INTO {SCHEMA}.company_bank_oauth_grants
-                    (company_id, provider_slug, is_sandbox, access_token, refresh_token, scope, expires_at)
-                VALUES (%s, %s, %s, %s, NULL, %s,
-                        CASE WHEN %s > 0 THEN NOW() + make_interval(secs => %s) ELSE NULL END)
-                ON CONFLICT (company_id, provider_slug) DO UPDATE SET
-                    is_sandbox = EXCLUDED.is_sandbox,
-                    access_token = EXCLUDED.access_token,
-                    scope = EXCLUDED.scope,
-                    expires_at = EXCLUDED.expires_at,
-                    revoked_at = NULL,
-                    updated_at = NOW()
-            ''', (int(company_id), PROVIDER_SLUG, bool((shop or {}).get('test')), token, shop_id,
-                  expires_in, expires_in))
+                UPDATE {SCHEMA}.platform_payment_providers SET
+                    access_token = %s, shop_id = %s, is_test = %s,
+                    token_expires_at = CASE WHEN %s > 0 THEN NOW() + make_interval(secs => %s) ELSE NULL END,
+                    connected_at = NOW(), connected_by = %s, updated_at = NOW()
+                WHERE slug = %s
+            ''', (token, str((shop or {}).get('account_id') or '') or None, bool((shop or {}).get('test')),
+                  expires_in, expires_in, user_id, PROVIDER_SLUG))
             conn.commit()
             return _resp(200, {'success': True, 'shop': shop})
 

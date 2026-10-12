@@ -6,7 +6,6 @@ import DeleteIntegrationDialog from '@/components/integrations/DeleteIntegration
 import IntegrationsCategoryList from '@/components/integrations/IntegrationsCategoryList';
 import { useIntegrationsPageData } from '@/components/integrations/useIntegrationsPageData';
 import { TochkaOAuthDraft, takeTochkaDraft } from '@/components/integrations/tochkaOAuthDraft';
-import YookassaConnectCard from '@/components/integrations/YookassaConnectCard';
 
 interface IntegrationsPageProps {
   onSetupReceipts?: (integrationId: number) => void;
@@ -83,8 +82,6 @@ const IntegrationsPage = ({ onSetupReceipts }: IntegrationsPageProps) => {
           Добавить интеграцию
         </Button>
       </div>
-
-      {companyId && <YookassaConnectCard companyId={companyId} />}
 
       <IntegrationsCategoryList
         categories={categories}

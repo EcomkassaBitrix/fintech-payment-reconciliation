@@ -8,7 +8,7 @@ import functionUrls from '../../backend/func2url.json';
 const YOOKASSA_ERRORS: Record<string, string> = {
   access_denied: 'Вы отказали в доступе — магазин не подключён',
   invalid_request: 'Некорректный запрос — попробуйте подключить ещё раз',
-  invalid_scope: 'Приложению не хватает прав — напишите в поддержку Сверки',
+  invalid_scope: 'Приложению не хватает прав — проверьте доступы в настройках приложения ЮKassa',
   server_error: 'ЮKassa временно недоступна — попробуйте позже',
   temporarily_unavailable: 'ЮKassa временно недоступна — попробуйте позже'
 };
@@ -16,7 +16,7 @@ const YOOKASSA_ERRORS: Record<string, string> = {
 const YookassaOAuthCallback = () => {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { user, isLoading, setCurrentCompanyId } = useAuth();
+  const { user, isLoading } = useAuth();
   const [error, setError] = useState('');
   const started = useRef(false);
 
@@ -29,9 +29,8 @@ const YookassaOAuthCallback = () => {
     started.current = true;
 
     const code = params.get('code');
-    const companyId = Number(params.get('state'));
     const kassaError = params.get('error');
-    if (kassaError || !code || !companyId) {
+    if (kassaError || !code) {
       setError(
         kassaError
           ? YOOKASSA_ERRORS[kassaError] || `ЮKassa: ${params.get('error_description') || kassaError}`
@@ -43,7 +42,7 @@ const YookassaOAuthCallback = () => {
     fetch(`${functionUrls['tochka-oauth']}?provider=yookassa`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, company_id: companyId })
+      body: JSON.stringify({ code })
     })
       .then((r) => r.json())
       .then((data) => {
@@ -51,11 +50,10 @@ const YookassaOAuthCallback = () => {
           setError(data.error || 'Не удалось подключить ЮKassa');
           return;
         }
-        setCurrentCompanyId(companyId);
-        navigate('/app?section=integrations&yookassa=connected', { replace: true });
+        navigate('/admin?section=payments&yookassa=connected', { replace: true });
       })
       .catch(() => setError('Проблема с подключением к серверу'));
-  }, [isLoading, user, params, navigate, setCurrentCompanyId]);
+  }, [isLoading, user, params, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -64,8 +62,8 @@ const YookassaOAuthCallback = () => {
           <>
             <Icon name="CircleAlert" size={40} className="mx-auto text-destructive" />
             <p className="text-sm text-foreground">{error}</p>
-            <Button onClick={() => navigate(user ? '/app?section=integrations' : '/login', { replace: true })}>
-              {user ? 'Вернуться к интеграциям' : 'Войти'}
+            <Button onClick={() => navigate(user ? '/admin?section=payments' : '/login', { replace: true })}>
+              {user ? 'Вернуться в раздел «Оплата»' : 'Войти'}
             </Button>
           </>
         ) : (

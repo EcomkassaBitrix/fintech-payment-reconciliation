@@ -28,7 +28,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     GET  ?action=authorize_url&company_id=.. -> ссылка на подтверждение доступа в Точке
     GET  ?action=acquiring&company_id=..     -> торговые точки эквайринга + подписка на вебхук оплат
     POST { code, company_id }                -> обмен кода на токены и сохранение доступа
-    ?provider=yookassa                       -> подключение магазина ЮKassa (yookassa_oauth.py)
+    ?provider=yookassa                       -> провайдеры оплаты платформы для админки (yookassa_oauth.py)
     '''
     params_raw = event.get('queryStringParameters') or {}
     if params_raw.get('provider') == 'yookassa':
