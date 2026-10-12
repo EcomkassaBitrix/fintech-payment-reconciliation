@@ -89,6 +89,14 @@ const IntegrationSuccessStep = ({
                     <li>Для чеков передавайте товары (Items) при создании платёжной ссылки</li>
                     <li>Подпись каждого вебхука проверяем ключом Точки автоматически</li>
                   </ol>
+                ) : selectedProvider.slug === 'cloudpayments' ? (
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                    <li>ЛК CloudPayments → Сайты → ваш сайт → Настройки → блок «Уведомления»</li>
+                    <li>Вставьте этот URL в уведомления Pay, Fail, Refund и Cancel (при двухстадийной оплате — ещё Confirm). Check не включайте</li>
+                    <li>Метод — POST, кодировка — UTF-8, формат — CloudPayments</li>
+                    <li>Подпись каждого уведомления проверяем по API Secret, оплату дополнительно сверяем с CloudPayments</li>
+                    <li>Для чека с товарами передавайте состав чека (CustomerReceipt) в данные платежа, иначе — одна позиция на сумму с назначением платежа. Почта покупателя — из уведомления или из шаблона действия</li>
+                  </ol>
                 ) : selectedProvider.slug === 'yookassa' ? (
                   <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                     <li>ЮKassa → Интеграция → HTTP-уведомления: вставьте этот URL в поле «URL для уведомлений»</li>

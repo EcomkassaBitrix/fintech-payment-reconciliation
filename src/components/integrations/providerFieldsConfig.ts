@@ -157,6 +157,14 @@ export const YOOKASSA_NOTIFY_OPTIONS = [
   { key: 'notify_on_refunded', label: 'Возврат (refund.succeeded)' }
 ];
 
+export const CLOUDPAYMENTS_NOTIFY_OPTIONS = [
+  { key: 'notify_on_confirmed', label: 'Оплачен (Pay — одностадийная оплата, Confirm — подтверждение)' },
+  { key: 'notify_on_authorized', label: 'Средства заблокированы (Pay — двухстадийная оплата)' },
+  { key: 'notify_on_rejected', label: 'Отклонён (Fail)' },
+  { key: 'notify_on_refunded', label: 'Возврат (Refund)' },
+  { key: 'notify_on_canceled', label: 'Отменён (Cancel)' }
+];
+
 // Варианты «Уведомления о статусах платежей» по провайдеру - и для настроек интеграции, и для запуска сценария.
 export const notifyOptionsFor = (slug?: string) =>
   slug === 'tbank'
@@ -165,6 +173,8 @@ export const notifyOptionsFor = (slug?: string) =>
       ? ALFABANK_NOTIFY_OPTIONS
       : slug === 'yookassa'
       ? YOOKASSA_NOTIFY_OPTIONS
+      : slug === 'cloudpayments'
+      ? CLOUDPAYMENTS_NOTIFY_OPTIONS
       : slug === 'tochka_acquiring'
         ? TOCHKA_ACQUIRING_NOTIFY_OPTIONS
         : slug === 'ecomkassa_gateway'
@@ -223,6 +233,10 @@ export const PROVIDER_FIELDS: Record<string, FieldConfig[]> = {
     { key: 'user_name', label: 'Логин API-пользователя', type: 'text', placeholder: 'r-shop-api', hint: 'Учётная запись магазина с окончанием -api из письма Альфа-Банка' },
     { key: 'password', label: 'Пароль API-пользователя', type: 'password', placeholder: '•••••••••', hint: 'Логин и пароль проверим у банка при сохранении' },
     { key: 'callback_secret', label: 'Callback токен (необязательно)', type: 'password', placeholder: '•••••••••', required: false, hint: 'ЛК банка → Callback уведомления → тип подписи «Симметричный» → кнопка «Сгенерировать» рядом с полем «Callback токен» → скопируйте токен сюда. Пусто — уведомления принимаются без проверки подписи' }
+  ],
+  cloudpayments: [
+    { key: 'public_id', label: 'Public ID', type: 'text', placeholder: 'pk_••••••••••••', hint: 'ЛК CloudPayments → Сайты → ваш сайт → Настройки → Public ID' },
+    { key: 'api_secret', label: 'Пароль для API (API Secret)', type: 'password', placeholder: '•••••••••', hint: 'Там же, «Пароль для API». По нему проверяем подпись каждого уведомления и сверяем оплату с CloudPayments' }
   ],
   yookassa: [
     { key: 'shop_id', label: 'shopId', type: 'text', placeholder: '123456', hint: 'ЮKassa → Интеграция → Ключи API → shopId (только цифры)' },
@@ -341,7 +355,7 @@ export const PROVIDER_FIELDS: Record<string, FieldConfig[]> = {
 
 // Провайдеры, для которых наш сервис принимает входящие вебхуки.
 // Только для них имеет смысл показывать URL для вебхука и переадресацию.
-const PROVIDERS_WITH_INCOMING_WEBHOOK = ['tbank', 'alfabank', 'yookassa', 'tochka_acquiring', 'ecomkassa_gateway', 'moyklass', 'realtycalendar'];
+const PROVIDERS_WITH_INCOMING_WEBHOOK = ['tbank', 'alfabank', 'yookassa', 'cloudpayments', 'tochka_acquiring', 'ecomkassa_gateway', 'moyklass', 'realtycalendar'];
 
 export const buildDefaultConfig = (slug: string): ConfigState => {
   const fields = PROVIDER_FIELDS[slug] || [];
@@ -354,7 +368,7 @@ export const buildDefaultConfig = (slug: string): ConfigState => {
 
 // Платёжки, по которым чек делаем сами из корзины: после подключения предлагаем сценарий чеков.
 // Шлюз Екомкассы сюда не входит - чек по нему пробивает сама Екомкасса.
-const PROVIDERS_WITH_RECEIPT_SCENARIO = ['tbank', 'alfabank', 'yookassa', 'tochka_acquiring', 'moyklass', 'realtycalendar'];
+const PROVIDERS_WITH_RECEIPT_SCENARIO = ['tbank', 'alfabank', 'yookassa', 'cloudpayments', 'tochka_acquiring', 'moyklass', 'realtycalendar'];
 export const suggestsReceiptScenario = (slug?: string) => !!slug && PROVIDERS_WITH_RECEIPT_SCENARIO.includes(slug);
 
 export const acceptsIncomingWebhook = (slug?: string) => !!slug && PROVIDERS_WITH_INCOMING_WEBHOOK.includes(slug);

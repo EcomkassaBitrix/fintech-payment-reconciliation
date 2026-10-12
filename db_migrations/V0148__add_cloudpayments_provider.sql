@@ -1,0 +1,3 @@
+INSERT INTO t_p83864310_fintech_payment_reco.integration_providers (category_id, name, slug, logo_url, description, webhook_enabled, status)
+SELECT 1, 'CloudPayments', 'cloudpayments', '', 'Приём платежей через CloudPayments: уведомления Pay, Confirm, Fail, Refund, Cancel + чек по платежу', true, 'active'
+WHERE NOT EXISTS (SELECT 1 FROM t_p83864310_fintech_payment_reco.integration_providers WHERE slug = 'cloudpayments');

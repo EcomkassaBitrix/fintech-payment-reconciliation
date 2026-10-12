@@ -34,7 +34,7 @@ def _payment(cur, payment_id: str) -> Optional[Dict[str, Any]]:
         'status': r[4], 'customer_email': r[5], 'customer_phone': r[6],
         'payment_provider': r[7], 'receipt_id': r[8], 'created_at': r[9].isoformat() if r[9] else None,
         'integration_id': r[10], 'provider_slug': r[11],
-        'raw': (r[12] if isinstance(r[12], dict) else json.loads(r[12] or '{}')) if r[11] in ('moyklass', 'realtycalendar', 'alfabank', 'yookassa') else None
+        'raw': (r[12] if isinstance(r[12], dict) else json.loads(r[12] or '{}')) if r[11] in ('moyklass', 'realtycalendar', 'alfabank', 'yookassa', 'cloudpayments') else None
     }
 
 
@@ -151,8 +151,32 @@ def _yookassa_single_item(payment: Dict[str, Any], data: Dict[str, Any],
     )
 
 
+def _cloudpayments_single_item(payment: Dict[str, Any], data: Dict[str, Any],
+                               scenario: Dict[str, Any]) -> Tuple[str, Dict[str, Any], str]:
+    '''Платёж CloudPayments без чека в Data: одна позиция на сумму, название - назначение платежа.'''
+    raw = payment.get('raw') or {}
+    note = raw.get('notification') if isinstance(raw.get('notification'), dict) else {}
+    tx = raw.get('transaction') if isinstance(raw.get('transaction'), dict) else {}
+    description = ' '.join(str(note.get('Description') or tx.get('Description') or '').split())
+    order_no = payment.get('order_id') or payment['payment_id']
+    name = (description or f'Оплата заказа {order_no}')[:128]
+    amount = round(float(payment['amount'] or 0), 2)
+    if amount <= 0:
+        return 'error', data, 'У платежа CloudPayments нулевая сумма - чек не пробиваем'
+    data['items'] = [{'name': name, 'price': amount, 'quantity': 1, 'amount': amount,
+                      'payment_method': 'full_payment', 'payment_object': 'service',
+                      'tax': (scenario.get('template') or {}).get('vat') or 'none'}]
+    data['items_source'] = 'CloudPayments (назначение платежа)'
+    source = 'назначение платежа' if description else 'назначения нет, взят номер заказа'
+    return 'ready', data, (
+        f"Состава чека в платеже CloudPayments нет - чек одной позицией «{name}» на {amount:.2f} ₽ "
+        f"({source}, транзакция {payment['payment_id']})"
+    )
+
+
 # Провайдеры, у которых корзина приходит в уведомлении и без неё чек не собрать.
-CART_FROM_PROVIDER = {'tbank': 'Т-Банк', 'alfabank': 'Альфа-Банк', 'tochka_acquiring': 'Точка', 'yookassa': 'ЮKassa'}
+CART_FROM_PROVIDER = {'tbank': 'Т-Банк', 'alfabank': 'Альфа-Банк', 'tochka_acquiring': 'Точка', 'yookassa': 'ЮKassa',
+                      'cloudpayments': 'CloudPayments'}
 
 
 def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Dict[str, Any], str]:
@@ -243,6 +267,8 @@ def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Di
                                        'при создании ссылки (метод с чеком payments_with_receipt)')
             if payment['provider_slug'] == 'yookassa':
                 return _yookassa_single_item(payment, data, scenario)
+            if payment['provider_slug'] == 'cloudpayments':
+                return _cloudpayments_single_item(payment, data, scenario)
             if payment['provider_slug'] == 'alfabank':
                 if payment.get('payment_provider') == 'СБП' and not payment.get('order_id'):
                     return 'error', data, ('Оплата по статическому QR-коду СБП - у такого платежа нет корзины. '

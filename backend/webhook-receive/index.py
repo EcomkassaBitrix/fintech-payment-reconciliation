@@ -11,6 +11,7 @@ from inbox import save_event, mark_processed
 import tbank_handler
 import alfabank_handler
 import yookassa_api
+import cloudpayments_api
 import tochka_acquiring_handler
 import bitrix24_handler
 import crm_link
@@ -36,6 +37,7 @@ EVENT_TYPE_BY_PROVIDER = {
     'tbank': 'payment_status_changed',
     'alfabank': 'payment_status_changed',
     'yookassa': 'payment_status_changed',
+    'cloudpayments': 'payment_status_changed',
     'tochka_acquiring': 'payment_status_changed',
     'bitrix24': 'deal_updated',
     'amocrm': 'lead_updated',
@@ -92,7 +94,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     params = event.get('queryStringParameters', {}) or {}
     # Альфа-Банк по умолчанию шлёт уведомление GET-запросом с параметрами в ссылке.
-    is_get_callback = method == 'GET' and params.get('token') and params.get('mdOrder')
+    # CloudPayments по умолчанию тоже шлёт GET (параметры уведомления в ссылке, TransactionId).
+    is_get_callback = method == 'GET' and params.get('token') and (params.get('mdOrder') or params.get('TransactionId'))
     if method != 'POST' and not is_get_callback:
         return {
             'statusCode': 200,
@@ -180,6 +183,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
 
         integration_id, company_id, config, webhook_settings, provider_slug, forward_url = integration_row
+
+        if provider_slug == 'cloudpayments' and is_get_callback:
+            webhook_data = {k: v for k, v in params.items() if k not in ('token', 'type')}
 
         if provider_slug == 'alfabank':
             # Параметры уведомления могут быть и в ссылке (GET), и в теле (POST) - собираем вместе,
@@ -273,6 +279,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }
             if handler_error and yookassa_api.is_retryable(handler_error):
                 # ЮKassa недоступна: не 200 - она повторит уведомление (до 24 часов).
+                mark_processed(cur, event_id, 'failed', handler_error)
+                conn.commit()
+                return {
+                    'statusCode': 503,
+                    'headers': {'Content-Type': 'application/json'},
+                    'body': json.dumps({'error': handler_error}, ensure_ascii=False),
+                    'isBase64Encoded': False
+                }
+        elif provider_slug == 'cloudpayments':
+            signature_valid, webhook_payment_id, handler_error, skip_note = cloudpayments_api.process(
+                cur, integration_id, company_id, config, webhook_settings, webhook_data,
+                '' if is_get_callback else raw_body, headers, params
+            )
+            if not signature_valid:
+                mark_processed(cur, event_id, 'rejected', handler_error)
+                conn.commit()
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json'},
+                    'body': json.dumps({'code': 0}),
+                    'isBase64Encoded': False
+                }
+            if handler_error and cloudpayments_api.is_retryable(handler_error):
                 mark_processed(cur, event_id, 'failed', handler_error)
                 conn.commit()
                 return {
@@ -424,6 +453,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 VALUES (%s, %s, %s, %s, %s)
             ''', (webhook_payment_id, forward_url, status_code, error_message, response_time))
             conn.commit()
+
+        if provider_slug == 'cloudpayments':
+            # CloudPayments ждёт JSON {"code": 0}, иначе считает уведомление недоставленным.
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'code': 0}),
+                'isBase64Encoded': False
+            }
 
         return {
             'statusCode': 200,

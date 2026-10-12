@@ -236,10 +236,33 @@ def check_yookassa(config: Dict[str, Any]) -> Result:
         return _unavailable('ЮKassa', str(e)[:100])
 
 
+def check_cloudpayments(config: Dict[str, Any]) -> Result:
+    '''CloudPayments: тестовый метод /test по Public ID + API Secret. 401 - неверная пара.'''
+    import base64
+    public_id = str(config.get('public_id') or '').strip()
+    secret = str(config.get('api_secret') or '').strip()
+    if not public_id or not secret:
+        return False, 'Укажите Public ID и API Secret CloudPayments'
+    auth = base64.b64encode(f'{public_id}:{secret}'.encode('utf-8')).decode('ascii')
+    req = urllib.request.Request('https://api.cloudpayments.ru/test', data=b'{}', method='POST',
+                                 headers={'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode('utf-8') or '{}')
+        return (True, None) if data.get('Success') else (False, f"CloudPayments: {data.get('Message') or 'ключи не приняты'}")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return False, 'CloudPayments не принял Public ID и API Secret - проверьте их в ЛК → Сайты → Настройки'
+        return _unavailable('CloudPayments', f'ошибка {e.code}')
+    except Exception as e:
+        return _unavailable('CloudPayments', str(e)[:100])
+
+
 CHECKERS: Dict[str, Callable[[Dict[str, Any]], Result]] = {
     'tbank': check_tbank,
     'alfabank': check_alfabank,
     'yookassa': check_yookassa,
+    'cloudpayments': check_cloudpayments,
     'tochka_acquiring': check_tochka_acquiring,
     'bitrix24': check_bitrix24,
     'moyklass': check_moyklass,

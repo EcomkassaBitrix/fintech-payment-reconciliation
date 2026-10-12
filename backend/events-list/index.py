@@ -13,6 +13,7 @@ PROVIDER_TYPE_LABELS = {
     'alfabank': 'Касса (эквайринг)',
     'tochka': 'Касса (эквайринг)',
     'yookassa': 'Касса (эквайринг)',
+    'cloudpayments': 'Касса (эквайринг)',
     'bitrix24': 'CRM',
     'amocrm': 'CRM',
     'ofdru': 'ОФД',
