@@ -6,6 +6,7 @@ import psycopg2
 
 import tochka_oauth
 from auth_guard import guard
+from yookassa_oauth import yookassa_handler
 
 # Адрес возврата должен совпадать с указанным при регистрации приложения в Точке.
 REDIRECT_URI = os.environ.get('TOCHKA_REDIRECT_URI') or 'https://s-verka.ru/oauth/tochka'
@@ -27,7 +28,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     GET  ?action=authorize_url&company_id=.. -> ссылка на подтверждение доступа в Точке
     GET  ?action=acquiring&company_id=..     -> торговые точки эквайринга + подписка на вебхук оплат
     POST { code, company_id }                -> обмен кода на токены и сохранение доступа
+    ?provider=yookassa                       -> подключение магазина ЮKassa (yookassa_oauth.py)
     '''
+    params_raw = event.get('queryStringParameters') or {}
+    if params_raw.get('provider') == 'yookassa':
+        return yookassa_handler(event)
+
     denied = guard(event)
     if denied:
         return denied

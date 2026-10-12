@@ -19,6 +19,7 @@ import NotFound from "./pages/NotFoundPage";
 import WebhookLogsPage from "./pages/WebhookLogsPage";
 import InvitePage from "./pages/InvitePage";
 import TochkaOAuthCallback from "./pages/TochkaOAuthCallback";
+import YookassaOAuthCallback from "./pages/YookassaOAuthCallback";
 import LegalDocumentPage from "./pages/LegalDocumentPage";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
               <Route path="/create-company" element={<CreateCompany />} />
               <Route path="/invite/:token" element={<InvitePage />} />
               <Route path="/oauth/tochka" element={<TochkaOAuthCallback />} />
+              <Route path="/oauth/yookassa" element={<YookassaOAuthCallback />} />
               <Route path="/terms" element={<LegalDocumentPage doc="terms" />} />
               <Route path="/legal" element={<LegalDocumentPage doc="privacy" />} />
               <Route path="/app" element={<RequireAuth><Index /></RequireAuth>} />
