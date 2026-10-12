@@ -83,6 +83,41 @@ def _as_int(value: Any) -> Optional[int]:
         return None
 
 
+def is_platform_admin(cur, user_id: int) -> bool:
+    '''Владелец компании платформы или отмеченный им сотрудник.'''
+    cur.execute(f'''
+        SELECT 1 FROM {SCHEMA}.company_users cu
+        JOIN {SCHEMA}.companies c ON c.id = cu.company_id
+        WHERE cu.user_id = %s AND cu.status = 'active' AND c.is_platform_admin = true
+          AND (cu.platform_admin OR cu.role_id IN (SELECT id FROM {SCHEMA}.roles WHERE slug = 'owner'))
+        LIMIT 1
+    ''', (user_id,))
+    return cur.fetchone() is not None
+
+
+def support_access_open(cur, company_id: int, user_id: int) -> bool:
+    '''Клиент открыл доступ поддержке, срок не истёк, а пользователь - админ платформы.'''
+    cur.execute(f'''
+        SELECT 1 FROM {SCHEMA}.companies
+        WHERE id = %s AND support_access_enabled
+          AND (support_access_until IS NULL OR support_access_until > NOW())
+    ''', (company_id,))
+    if not cur.fetchone():
+        return False
+    return is_platform_admin(cur, user_id)
+
+
+def log_support_action(cur, company_id: int, user_id: int, method: str, action: Optional[str]) -> None:
+    '''Изменения поддержки в кабинете клиента пишутся в журнал (просмотр не пишется).'''
+    if method in ('GET', 'HEAD'):
+        return
+    details = f'{method} {action}' if action else method
+    cur.execute(f'''
+        INSERT INTO {SCHEMA}.support_access_log (company_id, user_id, action, details)
+        VALUES (%s, %s, 'change', %s)
+    ''', (company_id, user_id, details[:200]))
+
+
 def guard(event: Dict[str, Any], *, public: bool = False, public_methods: Iterable[str] = (),
           public_actions: Iterable[str] = (), public_query: Iterable[str] = (),
           check_company: bool = True,
@@ -165,6 +200,10 @@ def guard(event: Dict[str, Any], *, public: bool = False, public_methods: Iterab
                     WHERE cu.company_id = %s AND cu.user_id = %s AND cu.status = 'active'
                 ''', (cid, user_id))
                 member = cur.fetchone()
+                if not member and support_access_open(cur, cid, user_id):
+                    member = ('admin',)
+                    log_support_action(cur, cid, user_id, method, action)
+                    conn.commit()
                 if not member:
                     return _deny(403, 'Нет доступа к этой компании', 'forbidden')
                 if roles and member[0] not in roles:

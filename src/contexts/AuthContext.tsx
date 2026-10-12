@@ -23,6 +23,8 @@ export interface Company {
   max_integrations?: number | null;
   max_automations?: number | null;
   platform_admin?: boolean;
+  support_access?: boolean;
+  support_access_until?: string | null;
 }
 
 interface AuthUser {

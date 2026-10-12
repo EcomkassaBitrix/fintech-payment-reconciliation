@@ -3,10 +3,11 @@ import os
 import psycopg2
 from typing import Dict, Any
 from auth_guard import guard
+from support_access import support_handler
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'PUT, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400'
 }
@@ -38,6 +39,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Args: company_id, timezone (IANA-имя, например "Europe/Moscow")
     Returns: success, timezone
     '''
+    # Доступ поддержки платформы: GET и POST - отдельный раздел (support_access.py).
+    if event.get('httpMethod') in ('GET', 'POST'):
+        return support_handler(event)
+
     denied = guard(event)
     if denied:
         return denied

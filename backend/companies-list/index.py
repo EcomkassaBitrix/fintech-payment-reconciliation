@@ -97,6 +97,49 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'platform_admin': bool(row[17]) and (row[4] == 'owner' or bool(row[18]))
             })
 
+        # Компании, открывшие доступ поддержке: админ платформы работает в них с правами админа компании.
+        if any(c['platform_admin'] for c in companies):
+            own_ids = [c['id'] for c in companies]
+            cur.execute('''
+                SELECT
+                    c.id, c.name, c.inn, c.status,
+                    s.status, s.trial_ends_at, s.current_period_end,
+                    t.name, t.max_users, c.timezone, r.modules,
+                    t.modules, t.max_integrations, t.max_automations, t.slug, c.support_access_until
+                FROM companies c
+                JOIN roles r ON r.slug = 'admin'
+                LEFT JOIN subscriptions s ON s.company_id = c.id
+                LEFT JOIN tariffs t ON t.id = s.tariff_id
+                WHERE c.support_access_enabled
+                  AND (c.support_access_until IS NULL OR c.support_access_until > NOW())
+                  AND NOT (c.id = ANY(%s))
+                ORDER BY c.name
+            ''', (own_ids,))
+            for row in cur.fetchall():
+                companies.append({
+                    'id': row[0],
+                    'name': row[1],
+                    'inn': row[2],
+                    'status': row[3],
+                    'role_slug': 'admin',
+                    'role_name': 'Поддержка',
+                    'role_color': 'bg-info',
+                    'subscription_status': row[4],
+                    'trial_ends_at': row[5].isoformat() if row[5] else None,
+                    'current_period_end': row[6].isoformat() if row[6] else None,
+                    'tariff_name': row[7],
+                    'tariff_slug': row[14],
+                    'max_users': row[8],
+                    'timezone': row[9] or 'Europe/Moscow',
+                    'role_modules': row[10] or [],
+                    'tariff_modules': row[11],
+                    'max_integrations': row[12],
+                    'max_automations': row[13],
+                    'platform_admin': False,
+                    'support_access': True,
+                    'support_access_until': row[15].isoformat() if row[15] else None
+                })
+
         # Режим фоновых задач платформы: при включённом cron кабинет их сам не запускает.
         # Страховка: если планировщик не запускался последние 5 минут (не настроен или
         # упал), кабинеты продолжают запускать задачи сами - работа клиентов не встаёт.

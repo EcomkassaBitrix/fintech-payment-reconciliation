@@ -45,19 +45,30 @@ const CompanySwitcher = ({ companies, currentCompany, onSelect }: {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel>Ваши компании</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {companies.map((company) => (
-            <DropdownMenuItem
-              key={company.id}
-              onClick={() => onSelect(company.id)}
-              className="flex items-center justify-between gap-2"
-            >
-              <span className="truncate">{company.name}</span>
-              {company.id === currentCompany?.id && (
-                <Icon name="Check" size={14} className="text-primary shrink-0" />
-              )}
-            </DropdownMenuItem>
+          {[
+            { label: 'Ваши компании', list: companies.filter((c) => !c.support_access) },
+            { label: 'Клиенты (доступ поддержки)', list: companies.filter((c) => c.support_access) }
+          ].filter((g) => g.list.length > 0).map((group, gi) => (
+            <div key={group.label}>
+              {gi > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {group.list.map((company) => (
+                <DropdownMenuItem
+                  key={company.id}
+                  onClick={() => onSelect(company.id)}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    {company.support_access && <Icon name="LifeBuoy" size={14} className="text-info shrink-0" />}
+                    <span className="truncate">{company.name}</span>
+                  </span>
+                  {company.id === currentCompany?.id && (
+                    <Icon name="Check" size={14} className="text-primary shrink-0" />
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </div>
           ))}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => navigate('/create-company')}>
