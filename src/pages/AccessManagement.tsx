@@ -365,7 +365,13 @@ const AccessManagement = () => {
       const data = await res.json();
       if (res.ok && data.success) {
         const target = users.find(u => u.id === userId);
-        toast({ title: 'Роль владельца передана', description: target?.full_name || target?.phone });
+        const who = target?.full_name || target?.phone || '';
+        toast({
+          title: 'Роль владельца передана',
+          description: data.notified
+            ? `${who} получит сообщение в выбранный им канал уведомлений`
+            : `${who} увидит уведомление в кабинете (канал уведомлений у него не выбран)`
+        });
         await refreshCompanies();
         await loadData();
         return true;

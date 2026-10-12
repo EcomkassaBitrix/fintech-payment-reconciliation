@@ -2,7 +2,9 @@ import json
 import os
 import psycopg2
 from typing import Dict, Any
-from auth_guard import guard
+import urllib.request
+from datetime import datetime
+from auth_guard import guard, internal_headers
 
 
 def _json(status: int, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -12,6 +14,58 @@ def _json(status: int, data: Dict[str, Any]) -> Dict[str, Any]:
         'body': json.dumps(data, ensure_ascii=False),
         'isBase64Encoded': False
     }
+
+
+NOTIFICATIONS_URL = 'https://functions.poehali.dev/8f4541fc-6ff8-4816-a954-324e4278743d'
+
+
+def notify_new_owner(cur, conn, company_id, old_owner_id, new_owner_id) -> bool:
+    '''
+    Уведомление в кабинет компании + сообщение новому владельцу в канал из его
+    настроек уведомлений. Канал не выбран - только уведомление в кабинете.
+    Отправку запускаем сразу; если не успела - уйдёт с ближайшей фоновой рассылкой.
+    '''
+    cur.execute('SELECT name FROM companies WHERE id = %s', (company_id,))
+    company_name = (cur.fetchone() or [''])[0]
+    cur.execute('SELECT COALESCE(NULLIF(full_name, \'\'), phone) FROM app_users WHERE id = %s', (old_owner_id,))
+    old_name = (cur.fetchone() or [''])[0]
+    cur.execute('SELECT COALESCE(NULLIF(full_name, \'\'), phone) FROM app_users WHERE id = %s', (new_owner_id,))
+    new_name = (cur.fetchone() or [''])[0]
+    cur.execute('''
+        INSERT INTO notifications (company_id, kind, level, title, message, link_module, entity_type, entity_id, payload)
+        VALUES (%s, 'owner_transferred', 'info', 'Вы стали владельцем компании', %s, 'access', 'owner_transfer', %s, %s)
+        RETURNING id
+    ''', (
+        company_id,
+        f'{old_name} передал(а) вам роль владельца компании «{company_name}». Теперь вам доступны '
+        f'подписка, сотрудники и все настройки. Новый владелец: {new_name}.',
+        f'{new_owner_id}:{datetime.utcnow().isoformat()}',
+        json.dumps({'old_owner_id': int(old_owner_id), 'new_owner_id': int(new_owner_id)})
+    ))
+    notification_id = cur.fetchone()[0]
+    cur.execute('SELECT channel FROM notification_preferences WHERE company_id = %s AND user_id = %s',
+                (company_id, new_owner_id))
+    pref = cur.fetchone()
+    channel = pref[0] if pref else None
+    if channel:
+        cur.execute('''
+            INSERT INTO notification_deliveries (notification_id, user_id, channel)
+            VALUES (%s, %s, %s) ON CONFLICT (notification_id, user_id) DO NOTHING
+        ''', (notification_id, new_owner_id, channel))
+    conn.commit()
+    if not channel:
+        return False
+    try:
+        req = urllib.request.Request(
+            NOTIFICATIONS_URL,
+            data=json.dumps({'action': 'dispatch', 'company_id': int(company_id)}).encode('utf-8'),
+            headers={'Content-Type': 'application/json', **internal_headers()},
+            method='POST'
+        )
+        urllib.request.urlopen(req, timeout=3).close()
+    except Exception:
+        pass
+    return True
 
 
 def transfer_owner(requester_id, company_id, new_owner_id) -> Dict[str, Any]:
@@ -49,7 +103,8 @@ def transfer_owner(requester_id, company_id, new_owner_id) -> Dict[str, Any]:
             (company_id, requester_id)
         )
         conn.commit()
-        return _json(200, {'success': True})
+        notified = notify_new_owner(cur, conn, company_id, requester_id, new_owner_id)
+        return _json(200, {'success': True, 'notified': notified})
     except Exception as e:
         conn.rollback()
         return _json(500, {'error': str(e)})
