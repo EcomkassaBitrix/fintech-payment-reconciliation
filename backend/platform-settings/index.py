@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import psycopg2
 from auth_guard import guard, internal_headers
+import platform_crm
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 
@@ -407,6 +408,11 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
                            'ecomkassa_search': [t[0] for t in tasks if t[2].get('cron_item') == 'search']},
                'errors': [{'company_id': k, 'errors': v} for k, v in list(errors.items())[:5]],
                'next_offset': next_offset}
+    try:
+        summary['platform_crm'] = platform_crm.process_queue(cur, conn, 2.0)
+    except Exception as e:
+        conn.rollback()
+        summary['platform_crm'] = {'error': str(e)[:200]}
     cur.execute(f'''
         UPDATE {SCHEMA}.platform_settings SET cron_last_tick_at = NOW(), cron_last_result = %s WHERE id = 1
     ''', (json.dumps(summary, ensure_ascii=False),))
@@ -497,6 +503,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     POST {action: "set_admin", requester_user_id, user_id, enabled} - дать/забрать доступ (только владелец)
     POST {action: "tick"} + заголовок X-Cron-Token - шаг планировщика по всем компаниям
          (работает, только если включён режим cron)
+    CRM платформы (Битрикс24, передача регистраций клиентов):
+    GET ?requester_user_id=&section=crm - настройки + журнал передачи
+    GET ?requester_user_id=&section=crm_reference&webhook_url= - воронки, этапы и поля портала
+    POST {action: "save_crm", requester_user_id, webhook_url, is_enabled, entity, stage_id, phone_field, ...}
+    POST {action: "crm_retry", requester_user_id, event_id} - повторить передачу события
+    POST {action: "crm_process"} - разобрать очередь (внутренний сигнал функций регистрации)
     '''
     denied = guard(event, public_actions=('tick',), public_query=('public', 'banners'), override=('requester_user_id',), check_company=False)
     if denied:
@@ -522,6 +534,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if not settings['cron_enabled']:
                 return respond(409, {'error': 'Автоматический режим (cron) выключен в настройках платформы'})
             return respond(200, {'success': True, **tick(cur, conn, settings)})
+
+        if method == 'POST' and body.get('action') == 'crm_process':
+            # Сигнал от регистрации/профиля/компании (подписан ключом сервиса - пропущен guard).
+            if headers.get('x-service-sign'):
+                return respond(200, {'success': True, **platform_crm.process_queue(cur, conn)})
 
         # Публично: баннеры для страниц личного кабинета (пустой текст - баннера нет).
         if method == 'GET' and params.get('banners') == '1':
@@ -570,6 +587,41 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                   url, variant, body.get('is_active') is not False, requester))
             conn.commit()
             return respond(200, {'success': True, 'banners': load_banners(cur), 'pages': BANNER_PAGES})
+
+        if method == 'GET' and params.get('section') == 'crm':
+            return respond(200, {'success': True, 'crm': platform_crm.load_settings(cur),
+                                 'events': platform_crm.recent_events(cur),
+                                 'pending': platform_crm.pending_count(cur)})
+
+        if method == 'GET' and params.get('section') == 'crm_reference':
+            url = str(params.get('webhook_url') or '').strip() or (platform_crm.load_settings(cur).get('webhook_url') or '')
+            if url and not url.endswith('/'):
+                url += '/'
+            err = platform_crm.valid_webhook(url)
+            if err:
+                return respond(200, {'success': False, 'error': err})
+            ref, err = platform_crm.load_reference(url)
+            if err:
+                return respond(200, {'success': False, 'error': err})
+            return respond(200, {'success': True, **ref})
+
+        if method == 'POST' and body.get('action') == 'save_crm':
+            err = platform_crm.save_settings(cur, int(requester), body)
+            if err:
+                conn.rollback()
+                return respond(400, {'error': err})
+            conn.commit()
+            stats = platform_crm.process_queue(cur, conn, 2.5)
+            return respond(200, {'success': True, 'crm': platform_crm.load_settings(cur), 'processed': stats,
+                                 'events': platform_crm.recent_events(cur), 'pending': platform_crm.pending_count(cur)})
+
+        if method == 'POST' and body.get('action') == 'crm_retry':
+            if body.get('event_id'):
+                platform_crm.retry_event(cur, int(body['event_id']))
+                conn.commit()
+            stats = platform_crm.process_queue(cur, conn, 3.0)
+            return respond(200, {'success': True, 'processed': stats, 'events': platform_crm.recent_events(cur),
+                                 'pending': platform_crm.pending_count(cur)})
 
         if method == 'GET' and params.get('section') == 'admins':
             return respond(200, {'success': True, 'members': platform_members(cur),

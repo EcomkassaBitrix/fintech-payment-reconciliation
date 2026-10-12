@@ -2,6 +2,7 @@ import json
 import os
 import re
 import psycopg2
+import platform_crm_queue
 from typing import Dict, Any
 from auth_guard import guard
 
@@ -62,6 +63,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     conn = psycopg2.connect(os.environ['DATABASE_URL'])
     cur = conn.cursor()
     try:
+        cur.execute(f'SELECT full_name, email FROM {SCHEMA}.app_users WHERE id = %s', (user_id,))
+        before = cur.fetchone()
         cur.execute(f'''
             UPDATE {SCHEMA}.app_users
             SET full_name = %s, email = %s, updated_at = NOW()
@@ -72,7 +75,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not row:
             conn.rollback()
             return respond(404, {'error': 'Пользователь не найден'})
+        changed = not before or (before[0] or '') != full_name or (before[1] or '') != (email or '')
+        crm_queued = changed and platform_crm_queue.enqueue(cur, 'profile', user_id=row[0])
         conn.commit()
+        if crm_queued:
+            platform_crm_queue.signal()
         return respond(200, {
             'success': True,
             'user': {'user_id': row[0], 'phone': row[1], 'full_name': row[2], 'email': row[3]}

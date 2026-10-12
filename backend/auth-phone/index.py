@@ -10,6 +10,7 @@ import psycopg2
 from typing import Dict, Any, Optional, Tuple
 
 from auth_guard import create_session, revoke_session
+import platform_crm_queue
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 DEFAULT_MESSENGER_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
@@ -229,7 +230,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             user_id = row[0]
 
         session_token = create_session(cur, user_id, event)
+        crm_queued = is_new and platform_crm_queue.enqueue(cur, 'register', user_id=user_id,
+                                                           payload={'channel': body.get('channel')})
         conn.commit()
+        if crm_queued:
+            platform_crm_queue.signal()
 
         cur.execute('''
             SELECT c.id, c.name, c.status, r.slug, r.name, r.color, c.is_platform_admin, c.timezone, cu.platform_admin

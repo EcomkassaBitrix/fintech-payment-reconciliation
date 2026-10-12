@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminSidebar from '@/components/admin/AdminSidebar';
-import AdminPlaceholder from '@/components/admin/AdminPlaceholder';
 import AdminCompaniesSection from '@/components/admin/AdminCompaniesSection';
 import AdminRolesSection from '@/components/admin/AdminRolesSection';
 import AdminSupportAccessSection from '@/components/admin/AdminSupportAccessSection';
 import AdminPaymentProvidersSection from '@/components/admin/AdminPaymentProvidersSection';
+import AdminPlatformCrmSection from '@/components/admin/AdminPlatformCrmSection';
 import AdminActionTemplatesSection from '@/components/admin/AdminActionTemplatesSection';
 import AdminSettingsSection from '@/components/admin/AdminSettingsSection';
 import AdminTariffsSection from '@/components/admin/AdminTariffsSection';
@@ -30,9 +30,7 @@ const Admin = () => {
         {activeSection === 'payments' && <AdminPaymentProvidersSection />}
         {activeSection === 'banners' && <AdminBannersSection />}
         {activeSection === 'cases' && <AdminCasesSection />}
-        {activeSection === 'integrations' && (
-          <AdminPlaceholder icon="Plug" title="Интеграции CRM" description="Каталог провайдеров, доступных всем компаниям" />
-        )}
+        {activeSection === 'integrations' && <AdminPlatformCrmSection />}
       </main>
     </div>
   );

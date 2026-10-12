@@ -1,6 +1,7 @@
 import json
 import os
 import psycopg2
+import platform_crm_queue
 from typing import Dict, Any
 from auth_guard import guard
 
@@ -184,7 +185,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 (company_id, tariff_row[0], tariff_row[1], tariff_row[1])
             )
 
+        crm_queued = platform_crm_queue.enqueue(cur, 'company', user_id=user_id, company_id=company_id)
         conn.commit()
+        if crm_queued:
+            platform_crm_queue.signal()
 
         return {
             'statusCode': 200,
