@@ -563,6 +563,90 @@ def link_deals(cur, company_id: int, deal_row_id: Optional[int] = None) -> int:
     return len(cur.fetchall())
 
 
+# Опечатка в почте покупателя (кассир/клиент ввёл руками): допускаем до 2 правок в адресе.
+EMAIL_TYPO_MAX = 2
+
+
+def _edits(a: str, b: str, limit: int) -> int:
+    '''Расстояние Левенштейна с ранним выходом, если правок больше limit.'''
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur_row = [i]
+        for j, cb in enumerate(b, 1):
+            cur_row.append(min(prev[j] + 1, cur_row[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        if min(cur_row) > limit:
+            return limit + 1
+        prev = cur_row
+    return prev[-1]
+
+
+def similar_email(a: str, b: str) -> bool:
+    '''Почты почти совпадают: одинаковое имя до @ и опечатка в домене, или наоборот; всего не больше 2 правок.'''
+    a, b = (a or '').strip().lower(), (b or '').strip().lower()
+    if not a or not b or '@' not in a or '@' not in b:
+        return False
+    if a == b:
+        return True
+    la, _, da = a.partition('@')
+    lb, _, db = b.partition('@')
+    if la != lb and da != db:
+        return False
+    if min(len(la), len(lb)) < 4:
+        return False
+    return _edits(a, b, EMAIL_TYPO_MAX) <= EMAIL_TYPO_MAX
+
+
+def link_deals_fuzzy_email(cur, company_id: int, deal_row_id: Optional[int] = None) -> int:
+    '''
+    Как link_deals, но почта чека и сделки совпадает с опечаткой (compactum@yandex.ru и compactum@yande.ru).
+    Сумма - до копейки, чек пробит в ±5 минут от хука сделки, чек ни с чем не связан, и такой чек
+    ровно один: иначе не угадываем.
+    '''
+    cur.execute(f'''
+        SELECT d2.id, d2.customer_emails, r.id, r.customer_email,
+               abs(extract(epoch FROM r.doc_datetime - we.created_at)) AS gap
+        FROM {SCHEMA}.crm_deals d2
+        JOIN {SCHEMA}.webhook_events we ON we.integration_id = d2.integration_id
+             AND we.external_deal_id = d2.external_deal_id
+             AND COALESCE(we.raw_payload->>'source', '') <> 'cron_candidate'
+        JOIN {SCHEMA}.ecomkassa_receipts r ON r.company_id = d2.company_id AND r.removed_at IS NULL
+             AND r.status = 'done' AND r.customer_email IS NOT NULL AND r.total_sum = d2.amount
+             AND r.doc_datetime BETWEEN we.created_at - make_interval(mins => %s) AND we.created_at + make_interval(mins => %s)
+        WHERE d2.company_id = %s AND d2.linked_receipt_id IS NULL AND d2.removed_at IS NULL
+          AND COALESCE(d2.customer_emails, '') <> '' AND d2.amount > 0
+          AND d2.updated_at > NOW() - make_interval(days => %s)
+          AND (%s::int IS NULL OR d2.id = %s::int)
+          AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.crm_deals o WHERE o.linked_receipt_id = r.id)
+    ''', (HOOK_WINDOW_MIN, HOOK_WINDOW_MIN, company_id, LOOKBACK_DAYS, deal_row_id, deal_row_id))
+    matches: Dict[int, Dict[int, Any]] = {}
+    for deal_id, deal_emails, receipt_id, receipt_email, gap in cur.fetchall():
+        emails = [e for e in (deal_emails or '').split(',') if e]
+        if any(similar_email(e, receipt_email) for e in emails):
+            prev = matches.setdefault(deal_id, {}).get(receipt_id)
+            matches[deal_id][receipt_id] = min(gap, prev) if prev is not None else gap
+    used = set()
+    linked = 0
+    for deal_id, receipts in matches.items():
+        if len(receipts) != 1:
+            continue
+        receipt_id = next(iter(receipts))
+        if receipt_id in used:
+            continue
+        cur.execute(f'''
+            UPDATE {SCHEMA}.crm_deals SET linked_receipt_id = %s, linked_at = NOW()
+            WHERE id = %s AND linked_receipt_id IS NULL
+              AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.crm_deals o WHERE o.linked_receipt_id = %s)
+            RETURNING id
+        ''', (receipt_id, deal_id, receipt_id))
+        if cur.fetchone():
+            used.add(receipt_id)
+            linked += 1
+            print(f'crm link: deal row {deal_id} -> receipt {receipt_id} by similar email')
+    return linked
+
+
 def candidate_receipts(cur, deal_row_id: int) -> List[int]:
     '''Чеки той же суммы, пробитые в окне ±5 минут от хуков сделки, - им нужна почта покупателя.'''
     cur.execute(f'''
@@ -622,6 +706,7 @@ def run(cur, token: str, protocol_version: str, company_id: int) -> int:
     fill_receipt_emails(cur, token, protocol_version, company_id)
     fill_deal_emails(cur, company_id)
     linked += link_deals(cur, company_id)
+    linked += link_deals_fuzzy_email(cur, company_id)
     drop_lost_candidates(cur, company_id)
     return linked
 
@@ -633,4 +718,4 @@ def run_for_deal(cur, token: Optional[str], protocol_version: str, company_id: i
     fill_deal_emails(cur, company_id, deal_row_id)
     if token:
         fill_receipt_emails(cur, token, protocol_version, company_id, candidate_receipts(cur, deal_row_id))
-    return link_deals(cur, company_id, deal_row_id)
+    return link_deals(cur, company_id, deal_row_id) or link_deals_fuzzy_email(cur, company_id, deal_row_id)
