@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import re
 import time
 import urllib.parse
@@ -131,31 +131,19 @@ def recover_missed_deals(cur, company_id: int) -> int:
     links = [r[0] for r in cur.fetchall()]
     if not links:
         return 0
-    cur.execute(f'''
-        SELECT ui.id, ui.config, ui.webhook_token,
-               ARRAY(SELECT DISTINCT d.raw_data->>'CATEGORY_ID' FROM {SCHEMA}.crm_deals d WHERE d.integration_id = ui.id),
-               ui.last_webhook_at
-        FROM {SCHEMA}.user_integrations ui
-        JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
-        WHERE ui.company_id = %s AND p.slug = 'bitrix24' AND ui.status = 'active' AND ui.webhook_token IS NOT NULL
-        ORDER BY ui.last_webhook_at DESC NULLS LAST, ui.id
-    ''', (company_id,))
-    portals: Dict[str, List[Any]] = {}
-    for ui_id, config, token, categories, _ in cur.fetchall():
-        config = config if isinstance(config, dict) else json.loads(config or '{}')
-        url = (config.get('webhook_url') or '').rstrip('/')
-        if url:
-            portals.setdefault(url, []).append((ui_id, token, set(c for c in categories if c)))
+    portals = _bitrix_portals(cur, company_id)
+
     def lookup(link: str):
         for url, integrations in portals.items():
             query = urllib.parse.urlencode([(f'filter[{BITRIX_PAY_LINK_FIELD}]', link), ('select[]', 'ID'),
-                                            ('select[]', 'CATEGORY_ID'), ('select[]', 'STAGE_SEMANTIC_ID')])
+                                            ('select[]', 'CATEGORY_ID'), ('select[]', 'STAGE_SEMANTIC_ID'),
+                                            ('select[]', 'DATE_CREATE')])
             found = _get_json(f'{url}/crm.deal.list.json?{query}', {}, timeout=2.5)
             deals = [d for d in ((found or {}).get('result') or []) if d.get('STAGE_SEMANTIC_ID') == 'S']
             if deals:
-                category = str(deals[0].get('CATEGORY_ID') or '0')
-                target = next((i for i in integrations if category in i[2]), integrations[0])
-                return target, str(deals[0]['ID'])
+                # Копии роботом в другие воронки: берём сделку из воронки, выбранной в интеграции.
+                keep = _keep_one(deals, integrations)
+                return _target(integrations, keep), str(keep['ID'])
         return None
 
     amo = _amo_accounts(cur, company_id)
@@ -208,6 +196,107 @@ def recover_missed_deals(cur, company_id: int) -> int:
 CANDIDATE_WINDOW_MIN = 5
 CANDIDATE_MIN_AGE_MIN = 10
 CANDIDATES_PER_RECEIPT = 3
+# Сколько сделок берём из Битрикса на отбор (из них после отсева копий - не больше CANDIDATES_PER_RECEIPT).
+CANDIDATES_FETCH = 10
+# Сделка, созданная раньше оплаты больше чем на N дней, - старая сделка клиента, а не эта продажа.
+CANDIDATE_MAX_AGE_DAYS = 7
+# Копия роботом без ссылки на оплату: тот же клиент, та же сумма, создана в пределах N минут.
+COPY_WINDOW_MIN = 2
+CANDIDATE_SELECT = ('ID', 'CATEGORY_ID', 'STAGE_SEMANTIC_ID', 'DATE_CREATE', 'CONTACT_ID', 'COMPANY_ID',
+                    BITRIX_PAY_LINK_FIELD)
+
+
+def _bx_time(value: Any):
+    try:
+        return datetime.fromisoformat(str(value)).astimezone(timezone.utc).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return None
+
+
+def _target(integrations: List[Any], deal: Dict[str, Any]):
+    category = str(deal.get('CATEGORY_ID') or '0')
+    return next((i for i in integrations if category in i[2]), integrations[0])
+
+
+def _keep_one(group: List[Dict[str, Any]], integrations: List[Any]) -> Dict[str, Any]:
+    '''
+    Из копий одной сделки - сделка из воронки, выбранной в настройках интеграции,
+    затем успешная, затем самая ранняя по дате создания.
+    '''
+    configured = set().union(*[i[2] for i in integrations if len(i) > 3 and i[3]]) if integrations else set()
+    return sorted(group, key=lambda d: (str(d.get('CATEGORY_ID') or '0') not in configured,
+                                        d.get('STAGE_SEMANTIC_ID') != 'S',
+                                        str(d.get('DATE_CREATE') or ''), int(d.get('ID') or 0)))[0]
+
+
+def pick_candidates(deals: List[Dict[str, Any]], integrations: List[Any], paid_at,
+                    pay_link: Optional[str]) -> List[Any]:
+    '''
+    Отбор сделок-кандидатов к чеку (сумма и смена стадии ±5 минут уже совпали).
+    Returns: [(сделка, причина отсева или None)].
+    1) Сделки со ссылкой на оплату этого чека - одна (из настроенной воронки), остальные - копии;
+       сделки без этой ссылки не нужны: есть точное совпадение.
+    2) Сделки с одинаковой между собой ссылкой - одна сделка и её копии: оставляем одну.
+    3) Без ссылки: тот же контакт/компания, создана в пределах 2 минут после другой - копия.
+    4) Созданные раньше оплаты больше чем на 7 дней - старые сделки клиента, не берём.
+    '''
+    out: List[Any] = []
+    link_of = lambda d: str(d.get(BITRIX_PAY_LINK_FIELD) or '').strip()
+    if pay_link:
+        exact = [d for d in deals if link_of(d) == pay_link]
+        if exact:
+            keep = _keep_one(exact, integrations)
+            for d in deals:
+                reason = None if d is keep else (
+                    f'копия #{keep["ID"]} (та же ссылка на оплату)' if d in exact
+                    else f'у чека есть сделка #{keep["ID"]} с его ссылкой на оплату')
+                out.append((d, reason))
+            return out
+    fresh = []
+    for d in deals:
+        created = _bx_time(d.get('DATE_CREATE'))
+        if created and paid_at and created < paid_at - timedelta(days=CANDIDATE_MAX_AGE_DAYS):
+            out.append((d, f'старая сделка клиента (создана {created:%d.%m.%Y})'))
+        else:
+            fresh.append(d)
+    by_link: Dict[str, List[Dict[str, Any]]] = {}
+    for d in fresh:
+        if link_of(d):
+            by_link.setdefault(link_of(d), []).append(d)
+    kept: List[Dict[str, Any]] = []
+    for d in fresh:
+        group = by_link.get(link_of(d))
+        if group and len(group) > 1:
+            keep = _keep_one(group, integrations)
+            if d is not keep:
+                out.append((d, f'копия #{keep["ID"]} (та же ссылка на оплату)'))
+                continue
+        kept.append(d)
+    final: List[Dict[str, Any]] = []
+    for d in sorted(kept, key=lambda x: (str(x.get('DATE_CREATE') or ''), int(x.get('ID') or 0))):
+        client = (str(d.get('CONTACT_ID') or '0'), str(d.get('COMPANY_ID') or '0'))
+        created = _bx_time(d.get('DATE_CREATE'))
+        twin = None
+        if client != ('0', '0') and created and not link_of(d):
+            for k in final:
+                k_created = _bx_time(k.get('DATE_CREATE'))
+                same_client = (client[0] != '0' and client[0] == str(k.get('CONTACT_ID') or '0')) or \
+                              (client[1] != '0' and client[1] == str(k.get('COMPANY_ID') or '0'))
+                if same_client and k_created and abs((created - k_created).total_seconds()) <= COPY_WINDOW_MIN * 60:
+                    twin = k
+                    break
+        if twin:
+            keep = _keep_one([twin, d], integrations)
+            if keep is d:
+                final[final.index(twin)] = d
+                out.append((twin, f'копия #{d["ID"]} (тот же клиент, создана в ту же минуту)'))
+            else:
+                out.append((d, f'копия #{twin["ID"]} (тот же клиент, создана в ту же минуту)'))
+            continue
+        final.append(d)
+    for i, d in enumerate(final):
+        out.append((d, None if i < CANDIDATES_PER_RECEIPT else 'лишний кандидат сверх лимита'))
+    return out
 
 
 def recover_candidate_deals(cur, company_id: int) -> int:
@@ -218,7 +307,7 @@ def recover_candidate_deals(cur, company_id: int) -> int:
     Каждый чек ищется один раз (не раньше чем через 10 минут, после поиска по ссылке на оплату).
     '''
     cur.execute(f'''
-        SELECT r.id, r.total_sum, r.doc_datetime
+        SELECT r.id, r.total_sum, r.doc_datetime, r.raw_data->'invoice_payload'->>'link'
         FROM {SCHEMA}.ecomkassa_receipts r
         WHERE r.company_id = %s AND r.removed_at IS NULL AND r.status = 'done' AND r.deal_search_at IS NULL
           AND r.total_sum > 0 AND r.doc_datetime IS NOT NULL
@@ -241,19 +330,21 @@ def recover_candidate_deals(cur, company_id: int) -> int:
         return 0
 
     def lookup(receipt):
-        receipt_id, total, paid_at = receipt
+        receipt_id, total, paid_at, pay_link = receipt
         found_all = []
         for url, integrations in portals.items():
             query = urllib.parse.urlencode([
                 ('filter[OPPORTUNITY]', f'{float(total):.2f}'),
                 ('filter[>MOVED_TIME]', (paid_at - timedelta(minutes=CANDIDATE_WINDOW_MIN)).strftime('%Y-%m-%dT%H:%M:%S+00:00')),
                 ('filter[<MOVED_TIME]', (paid_at + timedelta(minutes=CANDIDATE_WINDOW_MIN)).strftime('%Y-%m-%dT%H:%M:%S+00:00')),
-                ('select[]', 'ID'), ('select[]', 'CATEGORY_ID')])
+                *[('select[]', f) for f in CANDIDATE_SELECT]])
             found = _get_json(f'{url}/crm.deal.list.json?{query}', {}, timeout=2.5)
-            for d in ((found or {}).get('result') or [])[:CANDIDATES_PER_RECEIPT]:
-                category = str(d.get('CATEGORY_ID') or '0')
-                target = next((i for i in integrations if category in i[2]), integrations[0])
-                found_all.append((target, str(d['ID']), receipt_id))
+            deals = ((found or {}).get('result') or [])[:CANDIDATES_FETCH]
+            for deal, reason in pick_candidates(deals, integrations, paid_at, pay_link):
+                if reason:
+                    print(f'crm candidate skipped: deal {deal.get("ID")} for receipt {receipt_id} - {reason}')
+                    continue
+                found_all.append((_target(integrations, deal), str(deal['ID']), receipt_id))
         for base, token, integrations in amo:
             paid_ts = int(paid_at.timestamp())
             window = CANDIDATE_WINDOW_MIN * 60
@@ -294,8 +385,10 @@ def _bitrix_portals(cur, company_id: int) -> Dict[str, List[Any]]:
     for ui_id, config, token, categories in cur.fetchall():
         config = config if isinstance(config, dict) else json.loads(config or '{}')
         url = (config.get('webhook_url') or '').rstrip('/')
+        # Воронки, выбранные в настройках интеграции, иначе - воронки уже пришедших сделок.
+        chosen = {str(c) for c in (config.get('deal_categories') or []) if str(c).strip()}
         if url:
-            portals.setdefault(url, []).append((ui_id, token, set(c for c in categories if c)))
+            portals.setdefault(url, []).append((ui_id, token, chosen or set(c for c in categories if c), bool(chosen)))
     return portals
 
 
@@ -398,7 +491,10 @@ def link_deals_by_pay_link(cur, company_id: int, deal_row_id: Optional[int] = No
             -- сделка. Берём успешную, затем самую раннюю по дате создания в Битриксе (оригинал).
             SELECT DISTINCT ON (c.receipt_id) c.deal_id, c.receipt_id
             FROM (
-            SELECT d2.id AS deal_id, d2.raw_data AS deal_raw, (
+            SELECT d2.id AS deal_id, d2.raw_data AS deal_raw,
+                   -- Сделка из воронки, выбранной в настройках её интеграции, важнее копий в других воронках.
+                   COALESCE((SELECT ui.config->'deal_categories' ? (d2.raw_data->>'CATEGORY_ID')
+                             FROM {SCHEMA}.user_integrations ui WHERE ui.id = d2.integration_id), false) AS in_own_category, (
                 SELECT r.id FROM {SCHEMA}.ecomkassa_receipts r
                 WHERE r.company_id = d2.company_id AND r.removed_at IS NULL AND r.status = 'done'
                   AND (r.raw_data->'invoice_payload'->>'link') LIKE 'http%%'
@@ -413,7 +509,8 @@ def link_deals_by_pay_link(cur, company_id: int, deal_row_id: Optional[int] = No
               AND (%s::int IS NULL OR d2.id = %s::int)
             ) c
             WHERE c.receipt_id IS NOT NULL
-            ORDER BY c.receipt_id, (c.deal_raw->>'STAGE_SEMANTIC_ID' = 'S' OR c.deal_raw->>'STAGE_ID' LIKE '%%WON') DESC,
+            ORDER BY c.receipt_id, c.in_own_category DESC,
+                     (c.deal_raw->>'STAGE_SEMANTIC_ID' = 'S' OR c.deal_raw->>'STAGE_ID' LIKE '%%WON') DESC,
                      c.deal_raw->>'DATE_CREATE', c.deal_id
         ) m
         WHERE d.id = m.deal_id

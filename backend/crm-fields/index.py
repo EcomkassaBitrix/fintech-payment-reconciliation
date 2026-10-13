@@ -133,10 +133,39 @@ def realtycalendar(method: str, body: Dict[str, Any], config: Dict[str, Any], in
     })
 
 
+def bitrix_categories(params: Dict[str, Any], company_id: int, integration_id: Any) -> Dict[str, Any]:
+    '''Воронки сделок портала Битрикс24 - по вебхуку из формы или по сохранённой интеграции.'''
+    webhook_url = str(params.get('webhook_url') or '').strip()
+    if not webhook_url and integration_id:
+        conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        cur = conn.cursor()
+        try:
+            cur.execute(f'SELECT config FROM {SCHEMA}.user_integrations WHERE id = %s AND company_id = %s',
+                        (integration_id, company_id))
+            row = cur.fetchone()
+        finally:
+            cur.close()
+            conn.close()
+        config = (json.loads(row[0]) if isinstance(row[0], str) else (row[0] or {})) if row else {}
+        webhook_url = str(config.get('webhook_url') or '')
+    if not webhook_url:
+        return respond(200, {'success': False, 'error': 'Сначала укажите входящий вебхук Битрикс24'})
+    result, err = bitrix_crm.call(webhook_url, 'crm.category.list', {'entityTypeId': 2})
+    if err:
+        return respond(200, {'success': False, 'error': err})
+    raw = result.get('categories') if isinstance(result, dict) else result
+    categories = [{'id': '0', 'name': 'Общая воронка'}]
+    for c in raw or []:
+        if isinstance(c, dict) and str(c.get('id')) != '0':
+            categories.append({'id': str(c.get('id')), 'name': c.get('name') or f"Воронка {c.get('id')}"})
+    return respond(200, {'success': True, 'categories': categories})
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Поля CRM для настройки сценария автоматизации (Битрикс24 и «Мой Класс»).
     GET ?company_id=&integration_id= - поля сделок, лидов, контактов, компаний и стадии воронок
+    GET ?company_id=&categories=1&webhook_url= (или &integration_id=) - воронки сделок Битрикс24
     POST {company_id, integration_id, entity: deal|lead, entity_id, mapping} - проверка сопоставления
          на реальной сделке/лиде: какие значения подставятся и какой получится чек
     '''
@@ -152,6 +181,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     body = json.loads(event.get('body') or '{}') if method == 'POST' else {}
     company_id = params.get('company_id') or body.get('company_id')
     integration_id = params.get('integration_id') or body.get('integration_id')
+    if method == 'GET' and params.get('categories') == '1' and company_id:
+        return bitrix_categories(params, int(company_id), integration_id)
     if not company_id or not integration_id:
         return respond(400, {'error': 'company_id и integration_id обязательны'})
 

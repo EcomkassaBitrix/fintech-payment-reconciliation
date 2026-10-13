@@ -10,6 +10,7 @@ import EcomkassaPaymentTypesPicker from './EcomkassaPaymentTypesPicker';
 import TochkaAuthMethodPicker from './TochkaAuthMethodPicker';
 import TochkaAcquiringPicker from './TochkaAcquiringPicker';
 import MoyklassPaymentTypesPicker from './MoyklassPaymentTypesPicker';
+import BitrixCategoriesPicker from './BitrixCategoriesPicker';
 import {
   ConfigState,
   FieldConfig,
@@ -292,6 +293,15 @@ const IntegrationConfigStep = ({
       )}
 
       {currentFields.map(renderField)}
+
+      {selectedProvider.slug === 'bitrix24' && (
+        <BitrixCategoriesPicker
+          companyId={companyId}
+          integrationId={integrationId}
+          config={config}
+          onConfigChange={onConfigChange}
+        />
+      )}
 
       {selectedProvider.slug === 'moyklass' && (config.stage || 'payment_new') === 'payment_new' && (
         <MoyklassPaymentTypesPicker
