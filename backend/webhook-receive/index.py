@@ -361,6 +361,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             ''', (webhook_data.get('receipt_id'), integration_id, str(external_deal_id)))
             conn.commit()
         if provider_slug in ('bitrix24', 'amocrm') and not handler_error and external_deal_id and not is_candidate:
+            # Сделка, убранная как лишний кандидат к чеку, получила свой хук из CRM - она нужна.
+            cur.execute('''
+                UPDATE t_p83864310_fintech_payment_reco.crm_deals SET removed_at = NULL
+                WHERE integration_id = %s AND external_deal_id = %s AND removed_at IS NOT NULL
+                  AND webhook_count > 1
+            ''', (integration_id, str(external_deal_id)))
+            conn.commit()
             # Сразу по хуку CRM ищем чек и платёж этой сделки (почта + сумма + ±5 минут от хука),
             # чтобы в реестре сделка встала в одну группу с ними без ожидания крона.
             try:

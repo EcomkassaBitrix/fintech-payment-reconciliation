@@ -479,12 +479,54 @@ def candidate_receipts(cur, deal_row_id: int) -> List[int]:
     return [r[0] for r in cur.fetchall()]
 
 
+def drop_lost_candidates(cur, company_id: int) -> int:
+    '''
+    Чек связан со сделкой (по ссылке на оплату, почте или вручную) - остальные сделки-кандидаты
+    к этому чеку больше не нужны: поиск по сумме и времени цепляет копии сделки роботом в другую
+    воронку и старые сделки клиента, сменившие стадию в ту же минуту. Сделку, которую загрузил только
+    поиск кандидатов (своих хуков из CRM не было, вручную не связана, сценариев нет), убираем;
+    у пришедшей хуком - только снимаем пометку кандидата.
+    '''
+    cur.execute(f'''
+        SELECT d.id,
+               EXISTS (SELECT 1 FROM {SCHEMA}.webhook_events we
+                       WHERE we.integration_id = d.integration_id AND we.external_deal_id = d.external_deal_id
+                         AND COALESCE(we.raw_payload->>'source', '') <> 'cron_candidate') AS has_own_hooks
+        FROM {SCHEMA}.crm_deals d
+        WHERE d.company_id = %s AND d.removed_at IS NULL AND d.linked_receipt_id IS NULL
+          AND d.candidate_receipt_id IS NOT NULL
+          AND (EXISTS (SELECT 1 FROM {SCHEMA}.crm_deals o
+                       WHERE o.linked_receipt_id = d.candidate_receipt_id AND o.id <> d.id AND o.removed_at IS NULL)
+               OR EXISTS (SELECT 1 FROM {SCHEMA}.manual_transaction_links ml
+                          JOIN {SCHEMA}.manual_transaction_links mr ON mr.company_id = ml.company_id
+                               AND mr.link_group_id = ml.link_group_id
+                          WHERE ml.company_id = d.company_id AND ml.tx_type = 'receipt_kassa'
+                            AND ml.tx_id = d.candidate_receipt_id AND mr.tx_type = 'crm_deal' AND mr.tx_id <> d.id))
+          AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.manual_transaction_links m
+                          WHERE m.company_id = d.company_id AND m.tx_type = 'crm_deal' AND m.tx_id = d.id)
+          AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.automation_jobs j
+                          WHERE j.source_type = 'crm_deal' AND j.source_id = d.external_deal_id)
+    ''', (company_id,))
+    rows = cur.fetchall()
+    drop = [r[0] for r in rows if not r[1]]
+    keep = [r[0] for r in rows if r[1]]
+    if drop:
+        cur.execute(f'UPDATE {SCHEMA}.crm_deals SET removed_at = NOW(), candidate_receipt_id = NULL WHERE id = ANY(%s)', (drop,))
+    if keep:
+        cur.execute(f'UPDATE {SCHEMA}.crm_deals SET candidate_receipt_id = NULL WHERE id = ANY(%s)', (keep,))
+    if rows:
+        print(f'crm candidates dropped: removed {drop}, unmarked {keep}')
+    return len(rows)
+
+
 def run(cur, token: str, protocol_version: str, company_id: int) -> int:
     '''Один проход связывания сделок CRM с чеками кассы (крон). Returns: сколько сделок связано.'''
     linked = link_deals_by_pay_link(cur, company_id)
     fill_receipt_emails(cur, token, protocol_version, company_id)
     fill_deal_emails(cur, company_id)
-    return linked + link_deals(cur, company_id)
+    linked += link_deals(cur, company_id)
+    drop_lost_candidates(cur, company_id)
+    return linked
 
 
 def run_for_deal(cur, token: Optional[str], protocol_version: str, company_id: int, deal_row_id: int) -> int:

@@ -422,10 +422,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         ''', deals_params)
         deals_info = {(row[0], row[1]): row for row in cur.fetchall()}
 
+        # Сделки, убранные как лишние кандидаты к уже связанному чеку, в ленте не показываем.
+        cur.execute('''
+            SELECT integration_id, external_deal_id FROM t_p83864310_fintech_payment_reco.crm_deals
+            WHERE company_id = %s AND removed_at IS NOT NULL
+        ''', (company_id,))
+        removed_deals = {(r[0], r[1]) for r in cur.fetchall()}
+
         crm_groups: Dict[Any, Dict[str, Any]] = {}
         for row in crm_raw_rows:
             (ev_id, ev_integration_id, created_at, p_slug, event_type, status,
              error_message, external_deal_id, raw_payload, integration_name, provider_name, origin) = row
+            if external_deal_id and (ev_integration_id, external_deal_id) in removed_deals:
+                continue
 
             group_key = (ev_integration_id, external_deal_id) if external_deal_id else ('single', ev_id)
             if group_key not in crm_groups:
