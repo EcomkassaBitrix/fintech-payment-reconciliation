@@ -446,7 +446,7 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
             inserted_count = len(inserted_ids)
 
-        commission_rows = process_acquiring_settlements(cur, integration_id, company_id, provider_slug)
+        commission_rows = process_acquiring_settlements(cur, integration_id, company_id, provider_slug, config)
 
         cur.execute('''
             UPDATE t_p83864310_fintech_payment_reco.user_integrations

@@ -175,7 +175,7 @@ const IntegrationConfigStep = ({
           <Input
             id={field.key}
             placeholder={field.placeholder}
-            value={(config[field.key] ?? '') as string}
+            value={(config[field.key] ?? field.default ?? '') as string}
             onChange={(e) => onConfigChange({ ...config, [field.key]: e.target.value })}
           />
           {field.hint && <p className="text-xs text-muted-foreground mt-1">{field.hint}</p>}

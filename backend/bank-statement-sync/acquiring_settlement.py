@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -25,36 +25,77 @@ def parse_settlement(purpose: str):
     return settlement_date, commission
 
 
-# Выплаты «Долями» (ООО «Т-Покупки»): «...по Реестру переводов №4460124 от 2026-10-12 (pay_in_4),
-# Сумма Вознаграждения 1583-49...» - деньги приходят на следующий день за вычетом вознаграждения.
-BNPL_INNS = ('7743414212',)
-BNPL_REGISTRY_RE = re.compile(r'Реестр\w*\s+переводов\s+№\s*(\d+)\s+от\s+(\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4})', re.IGNORECASE)
-BNPL_FEE_RE = re.compile(r'Сумм\w*\s+вознаграждения\s+(\d[\d\s]*)(?:[-.,](\d{1,2}))?', re.IGNORECASE)
-# Платежи Долями ищем за несколько дней до даты реестра (реестр формируют на следующий день).
+# Выплаты рассрочек (Долями, Сплит, Подели и т.п.): приходят позже одной суммой за вычетом
+# вознаграждения. Пример Долями (ООО «Т-Покупки»): «...по Реестру переводов №4460124 от 2026-10-12
+# (pay_in_4), Сумма Вознаграждения 1583-49...». От каких контрагентов брать - настройка банка
+# bnpl_counterparties (ИНН или часть названия через запятую); не задана - только Т-Покупки.
+DEFAULT_BNPL_COUNTERPARTIES = '7743414212'
+# Как в платежах называются способы оплаты рассрочкой.
+BNPL_PAYMENT_MARKERS = ('dolyame', 'долями', 'рассроч', 'installment', 'split', 'сплит', 'podeli', 'подели',
+                        'mokka', 'мокка', 'plait', 'плайт', 'bnpl', 'pay_in_4')
+# Регулярка для базы: lower()/ILIKE базы не меняют регистр русских букв - перечисляем варианты.
+BNPL_PAYMENT_PATTERN = '|'.join(sorted({v for m in BNPL_PAYMENT_MARKERS for v in (m, m.capitalize(), m.upper())}))
+BNPL_REGISTRY_RE = re.compile(r'Реестр\w*\s+(?:переводов|платежей|операций)?\s*№\s*([\w-]+)\s+от\s+(\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4})', re.IGNORECASE)
+BNPL_DATE_RE = re.compile(r'\bза\s+(\d{2}\.\d{2}\.\d{4}|\d{4}-\d{2}-\d{2})', re.IGNORECASE)
+BNPL_FEE_RE = re.compile(r'(?:вознаграждени\w*|комисси\w*|удержан\w*)\D{0,25}?(\d[\d\s]*)(?:[-.,](\d{1,2}))?\s*(?:руб|р\.|₽|,|\.|$|\s)',
+                         re.IGNORECASE)
+# Платежи ищем за несколько дней до даты реестра (реестр формируют на следующий день).
 BNPL_LOOKBACK_DAYS = 3
 
 
-def parse_bnpl(purpose: str, counterparty_inn: Optional[str]):
-    '''Выплата Долями: (дата реестра, вознаграждение, номер реестра) или (None, None, None).'''
+def bnpl_counterparties(config: Optional[dict]) -> list:
+    raw = (config or {}).get('bnpl_counterparties')
+    if raw is None:
+        raw = DEFAULT_BNPL_COUNTERPARTIES
+    return [w.strip().lower() for w in str(raw).split(',') if w.strip()]
+
+
+def is_bnpl_counterparty(filters: list, inn: Optional[str], name: Optional[str]) -> bool:
+    inn = re.sub(r'\D', '', inn or '')
+    name = (name or '').lower()
+    for f in filters:
+        digits = re.sub(r'\D', '', f)
+        if digits and digits == f.replace(' ', ''):
+            if inn and inn == digits:
+                return True
+        elif f in name:
+            return True
+    return False
+
+
+def _parse_date(raw: str):
+    try:
+        return datetime.strptime(raw, '%Y-%m-%d' if '-' in raw else '%d.%m.%Y').date()
+    except ValueError:
+        return None
+
+
+def parse_bnpl(purpose: str, operation_date=None):
+    '''Выплата рассрочки: (день продаж, вознаграждение, номер реестра) или (None, None, None).'''
     text = purpose or ''
-    if not ((counterparty_inn or '') in BNPL_INNS or 'pay_in_4' in text):
+    fee_m = BNPL_FEE_RE.search(text)
+    if not fee_m:
         return None, None, None
     reg_m = BNPL_REGISTRY_RE.search(text)
-    fee_m = BNPL_FEE_RE.search(text)
-    if not reg_m or not fee_m:
-        return None, None, None
-    raw_date = reg_m.group(2)
-    try:
-        registry_date = datetime.strptime(raw_date, '%Y-%m-%d' if '-' in raw_date else '%d.%m.%Y').date()
-    except ValueError:
+    day, registry_no = None, None
+    if reg_m:
+        day, registry_no = _parse_date(reg_m.group(2)), reg_m.group(1)
+    else:
+        date_m = BNPL_DATE_RE.search(text)
+        if date_m:
+            day = _parse_date(date_m.group(1))
+    if not day and operation_date:
+        # Даты в назначении нет - продажи накануне поступления.
+        day = (operation_date.date() if hasattr(operation_date, 'date') else operation_date) - timedelta(days=1)
+    if not day:
         return None, None, None
     rub = fee_m.group(1).replace(' ', '')
     kop = (fee_m.group(2) or '0').ljust(2, '0')
-    return registry_date, Decimal(f'{rub}.{kop}'), reg_m.group(1)
+    return day, Decimal(f'{rub}.{kop}'), registry_no
 
 
 def find_bnpl_payments(cur, company_id: int, registry_date) -> list:
-    '''Успешные платежи Долями компании за несколько дней до даты реестра (включительно), ещё не привязанные.'''
+    '''Успешные платежи рассрочкой компании за несколько дней до даты реестра (включительно), ещё не привязанные.'''
     cur.execute(f'''
         WITH latest AS (
             SELECT DISTINCT ON (wp.integration_id, wp.payment_id)
@@ -69,11 +110,11 @@ def find_bnpl_payments(cur, company_id: int, registry_date) -> list:
         SELECT l.id, l.amount, l.pay_date FROM latest l
         WHERE l.pay_date BETWEEN %s::date - %s AND %s::date
           AND l.status IN ('AUTHORIZED', 'CONFIRMED')
-          AND (l.payment_provider ILIKE '%%DOLYAME%%' OR l.payment_provider ILIKE '%%Долями%%')
+          AND COALESCE(l.payment_provider, '') ~ %s
           AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.bank_statement_transactions b
                           WHERE b.linked_payment_id = l.id AND b.removed_at IS NULL)
         ORDER BY l.pay_date DESC, l.id
-    ''', (company_id, registry_date, BNPL_LOOKBACK_DAYS, registry_date))
+    ''', (company_id, registry_date, BNPL_LOOKBACK_DAYS, registry_date, BNPL_PAYMENT_PATTERN))
     return cur.fetchall()
 
 
@@ -129,41 +170,49 @@ def _commission_row(cur, integration_id: int, company_id: int, provider_slug: st
     return cur.fetchone() is not None
 
 
-def process_bnpl_settlements(cur, integration_id: int, company_id: int, provider_slug: str) -> int:
+def process_bnpl_settlements(cur, integration_id: int, company_id: int, provider_slug: str,
+                             config: Optional[dict] = None) -> int:
     '''
-    Выплаты «Долями» (ООО «Т-Покупки»): приходят на следующий день за вычетом вознаграждения.
-    Как у эквайринга: день продаж = дата реестра, расчётная строка вознаграждения в группе,
-    связь с платежом(ами) Долями, только если зачисление + вознаграждение = сумма платежей.
-    Returns: число новых строк вознаграждения.
+    Выплаты рассрочек от контрагентов из настройки банка (bnpl_counterparties). Как у эквайринга:
+    день продаж = дата реестра (или «за дату», иначе накануне поступления), расчётная строка
+    вознаграждения в группе, связь с платежом(ами) рассрочкой, только если зачисление +
+    вознаграждение = сумма платежей. Returns: число новых строк вознаграждения.
     '''
+    filters = bnpl_counterparties(config)
+    if not filters:
+        return 0
     cur.execute(f'''
-        SELECT id, external_transaction_id, operation_date, amount, purpose, counterparty_inn, linked_payment_id
+        SELECT id, external_transaction_id, operation_date, amount, purpose, counterparty_inn, counterparty_name,
+               linked_payment_id
         FROM {SCHEMA}.bank_statement_transactions
         WHERE integration_id = %s AND company_id = %s
           AND direction = 'in' AND removed_at IS NULL AND parent_transaction_id IS NULL
-          AND (counterparty_inn = ANY(%s) OR purpose ILIKE '%%pay_in_4%%')
-    ''', (integration_id, company_id, list(BNPL_INNS)))
-    # Текст назначения проверяем в parse_bnpl: ILIKE базы не сравнивает русские буквы без учёта регистра.
+    ''', (integration_id, company_id))
     created = 0
-    for dep_id, ext_id, op_date, amount, purpose, inn, linked_payment_id in cur.fetchall():
-        registry_date, fee, registry_no = parse_bnpl(purpose or '', inn)
-        if not registry_date or fee is None:
+    for dep_id, ext_id, op_date, amount, purpose, inn, name, linked_payment_id in cur.fetchall():
+        if not is_bnpl_counterparty(filters, inn, name):
             continue
+        day, fee, registry_no = parse_bnpl(purpose or '', op_date)
+        if not day or fee is None:
+            continue
+        short = re.sub(r'\s+', ' ', re.sub(r'(?i)общество с ограниченной ответственностью|ооо|ао|пао|["«»]', ' ', name or '')).strip()
+        source = 'Долями' if re.sub(r'\D', '', inn or '') == DEFAULT_BNPL_COUNTERPARTIES else (short or 'рассрочки')
         cur.execute(f'''
             UPDATE {SCHEMA}.bank_statement_transactions
             SET settlement_date = %s, commission_amount = %s, commission_source = 'purpose',
-                purpose_category = COALESCE(purpose_category, 'bnpl_payout')
+                purpose_category = 'bnpl_payout'
             WHERE id = %s
-        ''', (registry_date, fee, dep_id))
-        if _commission_row(cur, integration_id, company_id, provider_slug, dep_id, ext_id, op_date, fee, registry_date,
-                           'Вознаграждение Долями',
-                           f'Вознаграждение «Долями» по реестру №{registry_no} от {registry_date.strftime("%d.%m.%Y")} '
+        ''', (day, fee, dep_id))
+        registry = f'по реестру №{registry_no} ' if registry_no else ''
+        if _commission_row(cur, integration_id, company_id, provider_slug, dep_id, ext_id, op_date, fee, day,
+                           f'Вознаграждение {source}'[:255],
+                           f'Вознаграждение «{source}» {registry}за {day.strftime("%d.%m.%Y")} '
                            f'(удержано из зачисления {amount} руб.)'):
             created += 1
         if linked_payment_id:
             continue
         gross = Decimal(str(amount)) + fee
-        chosen = _pick_bnpl(find_bnpl_payments(cur, company_id, registry_date), gross, registry_date)
+        chosen = _pick_bnpl(find_bnpl_payments(cur, company_id, day), gross, day)
         if not chosen:
             continue
         cur.execute(f'UPDATE {SCHEMA}.bank_statement_transactions SET linked_payment_id = %s WHERE id = %s',
@@ -196,14 +245,14 @@ def find_card_payments(cur, company_id: int, settlement_date) -> list:
         WHERE pay_date = %s
           AND status IN ('AUTHORIZED', 'CONFIRMED')
           AND COALESCE(payment_provider, '') NOT ILIKE '%%SBP%%'
-          AND COALESCE(payment_provider, '') NOT ILIKE '%%DOLYAME%%'
-          AND COALESCE(payment_provider, '') NOT ILIKE '%%Долями%%'
+          AND COALESCE(payment_provider, '') !~ %s
         ORDER BY id
-    ''', (company_id, settlement_date))
+    ''', (company_id, settlement_date, BNPL_PAYMENT_PATTERN))
     return cur.fetchall()
 
 
-def process_acquiring_settlements(cur, integration_id: int, company_id: int, provider_slug: str) -> int:
+def process_acquiring_settlements(cur, integration_id: int, company_id: int, provider_slug: str,
+                                  config: Optional[dict] = None) -> int:
     '''
     Зачисление классического эквайринга приходит на следующий день(и) одной
     суммой за весь день продаж, уже за вычетом комиссии, а в назначении банк
@@ -233,6 +282,8 @@ def process_acquiring_settlements(cur, integration_id: int, company_id: int, pro
 
     created = 0
     for dep_id, ext_id, op_date, amount, purpose, linked_payment_id in deposits:
+        if 'pay_in_4' in (purpose or ''):
+            continue
         settlement_date, commission = parse_settlement(purpose or '')
         if not settlement_date or commission is None:
             continue
@@ -300,4 +351,4 @@ def process_acquiring_settlements(cur, integration_id: int, company_id: int, pro
                     ON CONFLICT (company_id, tx_type, tx_source, tx_id) DO NOTHING
                 ''', (company_id, group_id, tx_type, tx_source, tx_id))
 
-    return created + process_bnpl_settlements(cur, integration_id, company_id, provider_slug)
+    return created + process_bnpl_settlements(cur, integration_id, company_id, provider_slug, config)
