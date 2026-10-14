@@ -9,6 +9,7 @@ import { formatDateTime } from '@/lib/formatDate';
 import functionUrls from '../../../backend/func2url.json';
 import TbankTerminalForm, { TbankConfig } from './TbankTerminalForm';
 import AdminSubscriptionTransactions from './AdminSubscriptionTransactions';
+import TbankWebhookUrl from './TbankWebhookUrl';
 
 interface PaymentProvider {
   slug: string;
@@ -218,6 +219,7 @@ const AdminPaymentProvidersSection = () => {
                     </Button>
                   </div>
                 )}
+                {isTbank && <TbankWebhookUrl />}
               </CardContent>
             </Card>
           );
