@@ -33,6 +33,8 @@ interface PlatformSettings {
   contact_phone: string | null;
   contact_email_default: string | null;
   contact_phone_default: string | null;
+  contact_address: string | null;
+  contact_address_default: string | null;
 }
 
 interface CompanyOption {
@@ -53,6 +55,7 @@ const AdminSettingsSection = () => {
   const [metrikaId, setMetrikaId] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [contactAddress, setContactAddress] = useState('');
   const [messengerUrl, setMessengerUrl] = useState('');
   const [sources, setSources] = useState<CronSource[]>([]);
   const [sourceValues, setSourceValues] = useState<Record<string, boolean>>({});
@@ -71,6 +74,7 @@ const AdminSettingsSection = () => {
     setMetrikaId(data.settings.metrika_counter_id || '');
     setContactEmail(data.settings.contact_email || '');
     setContactPhone(data.settings.contact_phone || '');
+    setContactAddress(data.settings.contact_address || '');
     setMessengerUrl(data.settings.messenger_api_url || '');
     const list = data.cron_sources || [];
     setSources(list);
@@ -105,6 +109,7 @@ const AdminSettingsSection = () => {
           metrika_counter_id: metrikaId || null,
           contact_email: contactEmail.trim() || null,
           contact_phone: contactPhone.trim() || null,
+          contact_address: contactAddress.trim() || null,
           cron_sources: sourceValues,
           cron_intervals: sourceIntervals
         })
@@ -225,10 +230,18 @@ const AdminSettingsSection = () => {
                 placeholder={settings?.contact_phone_default || '+7 900 000-00-00'}
               />
             </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Адрес</Label>
+              <Input
+                value={contactAddress}
+                onChange={(e) => setContactAddress(e.target.value)}
+                placeholder={settings?.contact_address_default || '123456, г. Москва, ул. Примерная, д. 1'}
+              />
+            </div>
           </div>
           <p className="text-xs text-muted-foreground">
             Показываются в подвале сайта и подставляются в договор и политику. Пустое поле — берутся почта и телефон
-            владельца управляющей компании (подсказка в поле). Сохраняется общей кнопкой внизу.
+            владельца и юридический адрес управляющей компании (подсказка в поле). Сохраняется общей кнопкой внизу.
           </p>
         </CardContent>
       </Card>
