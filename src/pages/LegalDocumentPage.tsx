@@ -21,7 +21,13 @@ const LegalDocumentPage = ({ doc }: { doc: 'terms' | 'privacy' }) => {
       .catch(() => undefined);
   }, []);
 
-  const fill = (text: string) => text.split('{{OPERATOR}}').join(operatorTitle(operator));
+  const email = operator?.email || LEGAL_EMAIL;
+  const phone = operator?.phone || null;
+  const fill = (text: string) =>
+    text
+      .split('{{OPERATOR}}').join(operatorTitle(operator))
+      .split('{{EMAIL}}').join(email)
+      .split('{{PHONE}}').join(phone ? ` или по телефону ${phone}` : '');
 
   useEffect(() => {
     document.title = `${title} — Сверка`;
@@ -87,8 +93,16 @@ const LegalDocumentPage = ({ doc }: { doc: 'terms' | 'privacy' }) => {
               )}
               <dt className="text-muted-foreground">Эл. почта</dt>
               <dd>
-                <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">{LEGAL_EMAIL}</a>
+                <a href={`mailto:${email}`} className="text-primary hover:underline">{email}</a>
               </dd>
+              {phone && (
+                <>
+                  <dt className="text-muted-foreground">Телефон</dt>
+                  <dd>
+                    <a href={`tel:${phone.replace(/[^\d+]/g, '')}`} className="text-primary hover:underline">{phone}</a>
+                  </dd>
+                </>
+              )}
               <dt className="text-muted-foreground">Сайт</dt>
               <dd>
                 <a href={LEGAL_SITE} className="text-primary hover:underline">{LEGAL_SITE.replace('https://', '')}</a>

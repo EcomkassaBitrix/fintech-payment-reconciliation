@@ -5,6 +5,10 @@ import functionUrls from '../../../backend/func2url.json';
 interface Operator {
   name: string;
   inn: string | null;
+  ogrn?: string | null;
+  address?: string | null;
+  email?: string | null;
+  phone?: string | null;
 }
 
 const LandingFooter = ({ showCases = false }: { showCases?: boolean }) => {
@@ -55,6 +59,22 @@ const LandingFooter = ({ showCases = false }: { showCases?: boolean }) => {
               <div className="mb-4">
                 <p className="text-sm font-semibold text-foreground">{operator.name}</p>
                 {operator.inn && <p className="text-sm text-muted-foreground mt-1">ИНН {operator.inn}</p>}
+                {operator.ogrn && (
+                  <p className="text-sm text-muted-foreground">
+                    {operator.ogrn.length === 15 ? 'ОГРНИП' : 'ОГРН'} {operator.ogrn}
+                  </p>
+                )}
+                {operator.address && <p className="text-sm text-muted-foreground">{operator.address}</p>}
+                {operator.phone && (
+                  <a href={`tel:${operator.phone.replace(/[^\d+]/g, '')}`} className="mt-2 block text-sm text-foreground hover:text-primary">
+                    {operator.phone}
+                  </a>
+                )}
+                {operator.email && (
+                  <a href={`mailto:${operator.email}`} className="block text-sm text-foreground hover:text-primary">
+                    {operator.email}
+                  </a>
+                )}
               </div>
             )}
             <div className="flex flex-col gap-2 text-sm md:items-end">

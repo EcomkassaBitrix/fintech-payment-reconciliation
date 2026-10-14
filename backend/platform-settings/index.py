@@ -181,8 +181,16 @@ def load_settings(cur) -> Dict[str, Any]:
     cur.execute(f'''
         SELECT s.managing_company_id, c.name, c.inn, s.cron_enabled, s.cron_token,
                s.cron_last_tick_at, s.cron_last_result, s.updated_at, s.metrika_counter_id, s.cron_sources, s.cron_intervals,
-               s.maintenance_enabled, s.maintenance_message, s.maintenance_until, s.messenger_api_url
+               s.maintenance_enabled, s.maintenance_message, s.maintenance_until, s.messenger_api_url,
+               s.contact_email, s.contact_phone, u.email, u.phone
         FROM {SCHEMA}.platform_settings s
+        LEFT JOIN LATERAL (
+            SELECT au.email, au.phone FROM {SCHEMA}.company_users cu
+            JOIN {SCHEMA}.roles r ON r.id = cu.role_id
+            JOIN {SCHEMA}.app_users au ON au.id = cu.user_id
+            WHERE cu.company_id = s.managing_company_id AND cu.status = 'active'
+            ORDER BY (r.slug = 'owner') DESC, cu.id LIMIT 1
+        ) u ON true
         LEFT JOIN {SCHEMA}.companies c ON c.id = s.managing_company_id
         WHERE s.id = 1
     ''')
@@ -193,7 +201,9 @@ def load_settings(cur) -> Dict[str, Any]:
         'cron_last_result': r[6], 'updated_at': r[7], 'metrika_counter_id': r[8], 'cron_sources': r[9] or {}, 'cron_intervals': r[10] or {},
         'maintenance_enabled': bool(r[11]), 'maintenance_message': r[12],
         'maintenance_until': r[13].isoformat() if r[13] else None,
-        'messenger_api_url': r[14], 'messenger_api_url_default': DEFAULT_MESSENGER_URL
+        'messenger_api_url': r[14], 'messenger_api_url_default': DEFAULT_MESSENGER_URL,
+        'contact_email': r[15], 'contact_phone': r[16],
+        'contact_email_default': r[17], 'contact_phone_default': r[18],
     }
 
 
@@ -524,7 +534,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     GET ?banners=1 - баннеры с текстом для страниц кабинета (без авторизации)
     GET ?requester_user_id=&section=banners - все баннеры для редактирования
     POST {action: "save_banner", requester_user_id, page, text, button_text, button_url, variant, is_active}
-    POST {action: "save", requester_user_id, managing_company_id, cron_enabled, metrika_counter_id, messenger_api_url}
+    POST {action: "save", requester_user_id, managing_company_id, contact_email, contact_phone, cron_enabled,
+          metrika_counter_id, messenger_api_url} - почта/телефон пусто: берутся владельца управляющей компании
     POST {action: "save_maintenance", requester_user_id, maintenance_enabled, maintenance_message, maintenance_until}
          - режим техработ: сайт показывает заглушку всем, кроме администраторов платформы
     GET ?requester_user_id=&section=admins - сотрудники компании платформы и доступ к админке
@@ -582,7 +593,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 ''', (settings['managing_company_id'],))
                 row = cur.fetchone()
                 if row:
-                    operator = {'name': row[0], 'inn': row[1], 'ogrn': row[2], 'address': row[3]}
+                    operator = {'name': row[0], 'inn': row[1], 'ogrn': row[2], 'address': row[3],
+                                'email': settings.get('contact_email') or settings.get('contact_email_default'),
+                                'phone': settings.get('contact_phone') or settings.get('contact_phone_default')}
             return respond(200, {'success': True, 'metrika_counter_id': settings.get('metrika_counter_id'),
                                  'operator': operator, 'maintenance': {
                                      'enabled': settings['maintenance_enabled'],
@@ -710,12 +723,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             sources = {k: bool(v) for k, v in (body['cron_sources'] if isinstance(body.get('cron_sources'), dict) else settings.get('cron_sources') or {}).items() if k in keys}
             intervals = {k: v for k, v in (body['cron_intervals'] if isinstance(body.get('cron_intervals'), dict) else settings.get('cron_intervals') or {}).items()
                          if k in keys and v in INTERVAL_PRESETS}
+            email = (str(body['contact_email'] or '').strip()[:255] or None) if 'contact_email' in body else settings.get('contact_email')
+            if email and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+                return respond(400, {'error': 'Проверьте адрес почты'})
+            phone = (str(body['contact_phone'] or '').strip()[:50] or None) if 'contact_phone' in body else settings.get('contact_phone')
+            if phone and len(re.sub(r'\D', '', phone)) < 10:
+                return respond(400, {'error': 'Проверьте номер телефона'})
             cur.execute(f'''
                 UPDATE {SCHEMA}.platform_settings
-                SET managing_company_id = %s, cron_enabled = %s, metrika_counter_id = %s, cron_sources = %s, cron_intervals = %s,
+                SET contact_email = %s, contact_phone = %s, managing_company_id = %s, cron_enabled = %s, metrika_counter_id = %s, cron_sources = %s, cron_intervals = %s,
                     messenger_api_url = %s, updated_by = %s, updated_at = NOW()
                 WHERE id = 1
-            ''', (company_id or None, bool(body.get('cron_enabled')), metrika, json.dumps(sources), json.dumps(intervals), messenger, requester))
+            ''', (email, phone, company_id or None, bool(body.get('cron_enabled')), metrika, json.dumps(sources), json.dumps(intervals), messenger, requester))
             conn.commit()
             settings = load_settings(cur)
 

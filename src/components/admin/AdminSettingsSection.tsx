@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
@@ -28,6 +29,10 @@ interface PlatformSettings {
   maintenance_until: string | null;
   messenger_api_url: string | null;
   messenger_api_url_default: string;
+  contact_email: string | null;
+  contact_phone: string | null;
+  contact_email_default: string | null;
+  contact_phone_default: string | null;
 }
 
 interface CompanyOption {
@@ -46,6 +51,8 @@ const AdminSettingsSection = () => {
   const [managingId, setManagingId] = useState<string>('');
   const [cronEnabled, setCronEnabled] = useState(false);
   const [metrikaId, setMetrikaId] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [messengerUrl, setMessengerUrl] = useState('');
   const [sources, setSources] = useState<CronSource[]>([]);
   const [sourceValues, setSourceValues] = useState<Record<string, boolean>>({});
@@ -62,6 +69,8 @@ const AdminSettingsSection = () => {
     setManagingId(data.settings.managing_company_id ? String(data.settings.managing_company_id) : '');
     setCronEnabled(data.settings.cron_enabled);
     setMetrikaId(data.settings.metrika_counter_id || '');
+    setContactEmail(data.settings.contact_email || '');
+    setContactPhone(data.settings.contact_phone || '');
     setMessengerUrl(data.settings.messenger_api_url || '');
     const list = data.cron_sources || [];
     setSources(list);
@@ -94,6 +103,8 @@ const AdminSettingsSection = () => {
           managing_company_id: managingId ? Number(managingId) : null,
           cron_enabled: cronEnabled,
           metrika_counter_id: metrikaId || null,
+          contact_email: contactEmail.trim() || null,
+          contact_phone: contactPhone.trim() || null,
           cron_sources: sourceValues,
           cron_intervals: sourceIntervals
         })
@@ -180,7 +191,7 @@ const AdminSettingsSection = () => {
             От её имени принимаются оплаты подписок клиентов и выставляются документы
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="max-w-md">
             <Select value={managingId} onValueChange={setManagingId}>
               <SelectTrigger>
@@ -195,6 +206,30 @@ const AdminSettingsSection = () => {
               </SelectContent>
             </Select>
           </div>
+          <div className="grid max-w-2xl gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Почта для клиентов</Label>
+              <Input
+                type="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                placeholder={settings?.contact_email_default || 'support@s-verka.ru'}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Телефон для клиентов</Label>
+              <Input
+                type="tel"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                placeholder={settings?.contact_phone_default || '+7 900 000-00-00'}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Показываются в подвале сайта и подставляются в договор и политику. Пустое поле — берутся почта и телефон
+            владельца управляющей компании (подсказка в поле). Сохраняется общей кнопкой внизу.
+          </p>
         </CardContent>
       </Card>
 
