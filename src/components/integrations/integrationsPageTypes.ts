@@ -35,4 +35,5 @@ export interface UserIntegration {
   receipts_enabled?: boolean;
   stopped_receipt_scenario?: { id: number; name: string } | null;
   oauth_status?: 'ok' | 'expiring' | 'expired' | 'missing' | null;
+  hidden_at?: string | null;
 }

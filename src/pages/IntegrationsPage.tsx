@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import HiddenIntegrationsBlock from '@/components/integrations/HiddenIntegrationsBlock';
 import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 import AddIntegrationDialog from '@/components/integrations/AddIntegrationDialog';
@@ -40,7 +41,8 @@ const IntegrationsPage = ({ onSetupReceipts, openCategorySlug, onCategoryOpened 
     handleToggleActive,
     handleEnableReceipts,
     togglingId,
-    getCategoryIntegrations
+    getCategoryIntegrations,
+    hiddenIntegrations
   } = useIntegrationsPageData();
   const [restoredDraft, setRestoredDraft] = useState<TochkaOAuthDraft | null>(null);
   const [startCategorySlug, setStartCategorySlug] = useState<string | null>(null);
@@ -112,6 +114,15 @@ const IntegrationsPage = ({ onSetupReceipts, openCategorySlug, onCategoryOpened 
         onEnableReceipts={handleEnableReceipts}
         onAddNew={handleAddNew}
       />
+
+      {companyId && (
+        <HiddenIntegrationsBlock
+          items={hiddenIntegrations}
+          companyId={companyId}
+          formatDate={formatDate}
+          onRestored={fetchIntegrations}
+        />
+      )}
 
       <AddIntegrationDialog
         open={showAddDialog}

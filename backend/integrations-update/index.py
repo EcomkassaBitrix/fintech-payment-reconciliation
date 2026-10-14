@@ -2,7 +2,7 @@ import json
 import os
 import psycopg2
 from typing import Dict, Any
-from auth_guard import guard
+from auth_guard import guard, is_platform_admin
 import credentials_check
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -51,6 +51,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     forward_url = body.get('forward_url')
     sync_interval_hours = body.get('sync_interval_hours')
     
+    if body.get('action') == 'restore_hidden':
+        return restore_hidden(event, integration_id, company_id)
+
     new_status = body.get('status')
     if integration_id and company_id and new_status in ('active', 'inactive') and set(body) <= {'integration_id', 'company_id', 'status'}:
         # Переключатель «включить/выключить»: выключенная интеграция не принимает вебхуки и не синхронизируется.
@@ -170,6 +173,56 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': str(e)}),
             'isBase64Encoded': False
         }
+    finally:
+        cur.close()
+        conn.close()
+
+def _json(status: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    return {'statusCode': status, 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps(data, ensure_ascii=False), 'isBase64Encoded': False}
+
+
+def restore_hidden(event: Dict[str, Any], integration_id, company_id) -> Dict[str, Any]:
+    '''Админ платформы возвращает интеграцию, скрытую при переходе на тариф ниже, вместе с её сценариями.'''
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    try:
+        if not is_platform_admin(cur, event.get('session_user_id')):
+            return _json(403, {'error': 'Восстановить может только администратор платформы'})
+        cur.execute('''
+            SELECT t.max_integrations,
+                   (SELECT COUNT(*) FROM user_integrations ui
+                    WHERE ui.company_id = %s AND ui.status NOT IN ('deleted', 'hidden'))
+            FROM subscriptions s JOIN tariffs t ON t.id = s.tariff_id WHERE s.company_id = %s
+        ''', (company_id, company_id))
+        row = cur.fetchone()
+        if row and row[0] is not None and row[1] >= row[0]:
+            return _json(400, {'error': f'По тарифу компании доступно интеграций: {row[0]}, уже подключено {row[1]}. '
+                                         'Сначала переведите компанию на тариф выше'})
+        cur.execute('''
+            UPDATE user_integrations
+            SET status = COALESCE(hidden_prev_status, 'active'), hidden_at = NULL, hidden_prev_status = NULL,
+                updated_at = NOW()
+            WHERE id = %s AND company_id = %s AND status = 'hidden'
+            RETURNING id
+        ''', (integration_id, company_id))
+        if not cur.fetchone():
+            return _json(404, {'error': 'Скрытая интеграция не найдена'})
+        cur.execute('''
+            UPDATE automation_scenarios
+            SET removed_at = NULL, status = COALESCE(hidden_prev_status, 'stopped'), hidden_at = NULL,
+                hidden_prev_status = NULL, updated_at = NOW()
+            WHERE company_id = %s AND hidden_at IS NOT NULL
+              AND (source_integration_id = %s OR target_integration_id = %s)
+              AND NOT EXISTS (
+                SELECT 1 FROM user_integrations o
+                WHERE o.id IN (automation_scenarios.source_integration_id, automation_scenarios.target_integration_id)
+                  AND o.status IN ('hidden', 'deleted'))
+            RETURNING id
+        ''', (company_id, integration_id, integration_id))
+        scenarios = len(cur.fetchall())
+        conn.commit()
+        return _json(200, {'success': True, 'restored_scenarios': scenarios})
     finally:
         cur.close()
         conn.close()

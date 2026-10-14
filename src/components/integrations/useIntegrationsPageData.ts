@@ -8,6 +8,7 @@ import { Category, Provider, UserIntegration } from './integrationsPageTypes';
 export const useIntegrationsPageData = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [userIntegrations, setUserIntegrations] = useState<UserIntegration[]>([]);
+  const [hiddenIntegrations, setHiddenIntegrations] = useState<UserIntegration[]>([]);
   const [allProviders, setAllProviders] = useState<Provider[]>([]);
   const [editingIntegration, setEditingIntegration] = useState<UserIntegration | null>(null);
   const [deletingIntegration, setDeletingIntegration] = useState<UserIntegration | null>(null);
@@ -25,12 +26,14 @@ export const useIntegrationsPageData = () => {
     if (!companyId) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`${functionUrls['integrations-list']}?company_id=${companyId}`);
+      const response = await fetch(`${functionUrls['integrations-list']}?company_id=${companyId}&include_hidden=1`);
       const data = await response.json();
 
       if (response.ok) {
         setCategories(data.categories || []);
-        setUserIntegrations(data.user_integrations || []);
+        const all: UserIntegration[] = data.user_integrations || [];
+        setUserIntegrations(all.filter((ui) => ui.status !== 'hidden'));
+        setHiddenIntegrations(all.filter((ui) => ui.status === 'hidden'));
 
         const providers: Provider[] = [];
         (data.categories || []).forEach((cat: Category) => {
@@ -290,6 +293,7 @@ export const useIntegrationsPageData = () => {
   };
 
   return {
+    hiddenIntegrations,
     categories,
     userIntegrations,
     allProviders,

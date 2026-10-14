@@ -91,7 +91,7 @@ def _integrations(cur, company_id, tariff) -> Optional[Dict[str, Any]]:
         SELECT ui.id, COALESCE(NULLIF(ui.integration_name, ''), p.name), p.name
         FROM {SCHEMA}.user_integrations ui
         LEFT JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
-        WHERE ui.company_id = %s AND ui.status != 'deleted'
+        WHERE ui.company_id = %s AND ui.status NOT IN ('deleted', 'hidden')
         ORDER BY ui.created_at, ui.id
     ''', (company_id,))
     items = [{'id': r[0], 'name': r[1], 'note': r[2], 'locked': False} for r in cur.fetchall()]
@@ -146,28 +146,29 @@ def to_delete(over: Dict[str, Any], keep: Dict[str, Any]) -> Dict[str, list]:
 
 
 def delete_scenarios(cur, ids: List[int]) -> None:
+    '''Сценарии сверх тарифа не стираются, а скрываются: клиент их не видит, админ платформы может вернуть.'''
     if not ids:
         return
-    cur.execute(f'''DELETE FROM {SCHEMA}.automation_job_log WHERE job_id IN
-                    (SELECT id FROM {SCHEMA}.automation_jobs WHERE scenario_id = ANY(%s))''', (ids,))
-    cur.execute(f'DELETE FROM {SCHEMA}.automation_documents WHERE scenario_id = ANY(%s)', (ids,))
-    cur.execute(f'DELETE FROM {SCHEMA}.automation_jobs WHERE scenario_id = ANY(%s)', (ids,))
-    cur.execute(f'DELETE FROM {SCHEMA}.automation_scenarios WHERE id = ANY(%s)', (ids,))
+    cur.execute(f'''
+        UPDATE {SCHEMA}.automation_scenarios
+        SET hidden_prev_status = status, hidden_at = NOW(), removed_at = NOW(), status = 'stopped', updated_at = NOW()
+        WHERE id = ANY(%s) AND removed_at IS NULL
+    ''', (ids,))
 
 
 def delete_integrations(cur, ids: List[int]) -> None:
+    '''Интеграции сверх тарифа скрываются вместе с их сценариями. Данные и история не трогаются.'''
     if not ids:
         return
     delete_scenarios(cur, _ids(cur, f'''
         SELECT id FROM {SCHEMA}.automation_scenarios
-        WHERE source_integration_id = ANY(%s) OR target_integration_id = ANY(%s)
+        WHERE (source_integration_id = ANY(%s) OR target_integration_id = ANY(%s)) AND removed_at IS NULL
     ''', (ids, ids)))
-    cur.execute(f'''DELETE FROM {SCHEMA}.webhook_forward_logs WHERE webhook_payment_id IN
-                    (SELECT id FROM {SCHEMA}.webhook_payments WHERE integration_id = ANY(%s))''', (ids,))
-    for table in ('webhook_payments', 'webhook_events', 'payment_carts', 'ecomkassa_receipts', 'crm_deals',
-                  'bank_statement_transactions', 'bank_oauth_tokens', 'ofd_receipts'):
-        cur.execute(f'DELETE FROM {SCHEMA}.{table} WHERE integration_id = ANY(%s)', (ids,))
-    cur.execute(f'DELETE FROM {SCHEMA}.user_integrations WHERE id = ANY(%s)', (ids,))
+    cur.execute(f'''
+        UPDATE {SCHEMA}.user_integrations
+        SET hidden_prev_status = status, hidden_at = NOW(), status = 'hidden', updated_at = NOW()
+        WHERE id = ANY(%s) AND status NOT IN ('deleted', 'hidden')
+    ''', (ids,))
 
 
 def delete_users(cur, company_id, keys: List[str]) -> None:

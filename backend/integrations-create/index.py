@@ -111,7 +111,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Лимит интеграций по тарифу (пусто - без ограничения).
         cur.execute('''
             SELECT t.max_integrations,
-                   (SELECT COUNT(*) FROM user_integrations ui WHERE ui.company_id = %s AND ui.status != 'deleted')
+                   (SELECT COUNT(*) FROM user_integrations ui WHERE ui.company_id = %s AND ui.status NOT IN ('deleted', 'hidden'))
             FROM subscriptions s JOIN tariffs t ON t.id = s.tariff_id
             WHERE s.company_id = %s
         ''', (company_id, company_id))

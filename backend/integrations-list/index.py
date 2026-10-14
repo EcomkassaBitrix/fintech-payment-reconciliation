@@ -2,7 +2,7 @@ import json
 import os
 import psycopg2
 from typing import Dict, Any
-from auth_guard import guard
+from auth_guard import guard, is_platform_admin
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -52,6 +52,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     cur = conn.cursor()
     
     try:
+        user_id = event.get('session_user_id')
+        show_hidden = params.get('include_hidden') == '1' and bool(user_id) and is_platform_admin(cur, user_id)
         cur.execute('''
             SELECT 
                 c.id as category_id,
@@ -128,13 +130,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         ELSE 'ok' END
                     FROM (SELECT 1) one
                     LEFT JOIN company_bank_oauth_grants g ON g.company_id = ui.company_id AND g.provider_slug = 'tochka_account'
-                ) END AS oauth_status
+                ) END AS oauth_status,
+                ui.hidden_at
             FROM user_integrations ui
             JOIN integration_providers p ON p.id = ui.provider_id
             JOIN integration_categories c ON c.id = p.category_id
-            WHERE ui.company_id = %s AND ui.status != 'deleted'
+            WHERE ui.company_id = %s AND ui.status != 'deleted' AND (ui.status != 'hidden' OR %s)
             ORDER BY ui.created_at DESC
-        ''', (company_id,))
+        ''', (company_id, show_hidden))
         
         user_integrations = []
         for row in cur.fetchall():
@@ -157,7 +160,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'last_synced_at': row[15].isoformat() if row[15] else None,
                 'receipts_enabled': bool(row[16]),
                 'stopped_receipt_scenario': row[17],
-                'oauth_status': row[18]
+                'oauth_status': row[18],
+                'hidden_at': row[19].isoformat() if row[19] else None
             })
         
         return {

@@ -321,7 +321,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                       )
                     LIMIT 1
                 ) km ON true
-                WHERE wp.company_id = %(company_id)s AND ui.status != 'deleted' AND wp.removed_at IS NULL
+                WHERE wp.company_id = %(company_id)s AND ui.status NOT IN ('deleted', 'hidden') AND wp.removed_at IS NULL
             ''')
 
         if wants(type_filter, 'receipt_ofd'):
@@ -496,7 +496,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     SELECT d.payment_row_id, d.operation, pp.slug AS payment_source
                     FROM {SCHEMA}.automation_documents d
                     JOIN {SCHEMA}.webhook_payments wp ON wp.id = d.payment_row_id AND wp.removed_at IS NULL
-                    JOIN {SCHEMA}.user_integrations pui ON pui.id = wp.integration_id AND pui.status != 'deleted'
+                    JOIN {SCHEMA}.user_integrations pui ON pui.id = wp.integration_id AND pui.status NOT IN ('deleted', 'hidden')
                     JOIN {SCHEMA}.integration_providers pp ON pp.id = pui.provider_id
                     WHERE d.company_id = ekr.company_id AND d.kassa_integration_id = ekr.integration_id
                       AND (d.ecom_uuid = ekr.order_id OR d.external_id = (ekr.raw_data->>'external_id'))
