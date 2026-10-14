@@ -246,6 +246,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     MAX(integration_name) AS integration_name,
                     MAX(provider_slug) AS provider_slug,
                     (array_agg(status ORDER BY created_at DESC))[1] AS refund_status,
+                    array_agg(id) AS wp_ids,
                     MAX(qr_code) AS qr_code,
                     MAX(ext_id) AS ext_id,
                     MIN(income_amount) AS income_amount
@@ -272,17 +273,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                            AND ((latest.qr_code IS NOT NULL AND substring(b.purpose FROM 'QR\\s*(?:коду\\s+)?ID\\s+([A-Za-z0-9]+)') = latest.qr_code)
                              OR (latest.ext_id IS NOT NULL AND substring(b.purpose FROM 'Платеж\\s+(\\S+)') = latest.ext_id))
                        ), 0)
-                     -- «Долями» перечисляет деньги реестром за день без номера платежа
-                     -- в назначении: берём долю удержанного вознаграждения реестров
-                     -- того же дня пропорционально сумме платежа.
-                     + CASE WHEN UPPER(COALESCE(latest.payment_provider, '')) = 'DOLYAME' THEN COALESCE((
+                     -- Выплаты рассрочек (Долями и т.п.) приходят реестром без номера
+                     -- платежа; синхронизация выписки сама связывает зачисление с
+                     -- платежом(ами) - берём вознаграждение по этой связи, долей от суммы.
+                     + COALESCE((
                          SELECT SUM(b.commission_amount * latest.amount / NULLIF(b.amount + b.commission_amount, 0))
                          FROM {SCHEMA}.bank_statement_transactions b
                          WHERE b.company_id = %s AND b.removed_at IS NULL AND b.direction = 'in'
                            AND b.parent_transaction_id IS NULL AND b.commission_amount > 0
-                           AND (b.purpose ILIKE '%%pay_in_4%%' OR b.purpose ILIKE '%%Долями%%')
-                           AND COALESCE(b.settlement_date, b.operation_date::date) = latest.payment_date
-                       ), 0) ELSE 0 END
+                           AND b.purpose_category = 'bnpl_payout'
+                           AND (b.linked_payment_id = ANY(latest.wp_ids) OR EXISTS (
+                                SELECT 1 FROM {SCHEMA}.manual_transaction_links lm
+                                JOIN {SCHEMA}.manual_transaction_links lp
+                                  ON lp.link_group_id = lm.link_group_id AND lp.company_id = lm.company_id
+                                WHERE lm.company_id = b.company_id AND lm.tx_type = 'money' AND lm.tx_id = b.id
+                                  AND lp.tx_type = 'payment' AND lp.tx_id = ANY(latest.wp_ids)))
+                       ), 0)
                    END AS commission
             FROM latest
             WHERE payment_date BETWEEN %s AND %s
