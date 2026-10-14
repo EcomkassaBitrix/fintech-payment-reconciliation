@@ -83,7 +83,7 @@ def _load_payment(cur, where: str, value) -> Optional[Dict[str, Any]]:
     cur.execute(f'''
         SELECT p.id, p.company_id, p.user_id, p.tariff_id, p.period, p.days, p.amount, p.status,
                p.keep_data, p.auto_renew, p.is_recurring, p.provider_payment_id, t.name, p.period_end, p.error_message,
-               p.refund_amount
+               p.refund_amount, p.is_test
         FROM {SCHEMA}.subscription_payments p JOIN {SCHEMA}.tariffs t ON t.id = p.tariff_id
         WHERE {where} FOR UPDATE OF p
     ''', (value,))
@@ -91,7 +91,7 @@ def _load_payment(cur, where: str, value) -> Optional[Dict[str, Any]]:
     if not r:
         return None
     keys = ['id', 'company_id', 'user_id', 'tariff_id', 'period', 'days', 'amount', 'status', 'keep',
-            'auto_renew', 'is_recurring', 'provider_payment_id', 'tariff_name', 'period_end', 'error', 'refund_amount']
+            'auto_renew', 'is_recurring', 'provider_payment_id', 'tariff_name', 'period_end', 'error', 'refund_amount', 'is_test']
     return dict(zip(keys, r))
 
 
@@ -125,7 +125,9 @@ def mark_paid(cur, pay: Dict[str, Any], data: Dict[str, Any]):
     if pay['status'] == 'paid':
         return pay['period_end']
     tariff = next((t for t in load_tariffs(cur) if t['id'] == pay['tariff_id']), None)
-    if tariff:
+    # Лишнее удаляем ТОЛЬКО по явному выбору клиента на странице тарифа (keep). Тестовые оплаты из админки,
+    # автопродления и платежи без выбора данные компании не трогают никогда.
+    if tariff and pay['keep'] and not pay.get('is_test') and not pay.get('is_recurring'):
         over = downgrade.overage(cur, pay['company_id'], tariff, pay['user_id'])
         if over:
             removed = downgrade.apply(cur, pay['company_id'], downgrade.to_delete(over, pay['keep'] or {}))
