@@ -249,51 +249,51 @@ const AdminPlatformCrmSection = () => {
               </label>
             </div>
             <div className="space-y-1.5">
-              <Label>Поле «Канал коммуникации»</Label>
-              <Select value={form.channel_field || NONE} onValueChange={(v) => set({ channel_field: v === NONE ? null : v, channel_map: {} })} disabled={!ref}>
-                <SelectTrigger><SelectValue placeholder="Не передавать" /></SelectTrigger>
+              <Label>ИНН компании</Label>
+              <Select value={form.inn_field} onValueChange={(v) => set({ inn_field: v })} disabled={!ref}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NONE}>Не передавать</SelectItem>
-                  {channelOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  <SelectItem value="requisite">Реквизиты компании (стандарт Битрикс24)</SelectItem>
+                  {innOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 </SelectContent>
               </Select>
-              {channelField?.type === 'enumeration' && channelField.items?.length ? (
-                <div className="space-y-2 rounded-lg border border-border p-3">
-                  <p className="text-xs text-muted-foreground">Какое значение списка ставить для мессенджера, куда пришёл код</p>
-                  {MESSENGER_CHANNELS.map((m) => {
-                    const value = form.channel_map?.[m.key] ?? autoMatch(m.label);
-                    return (
-                      <div key={m.key} className="grid grid-cols-[90px_1fr] items-center gap-2">
-                        <span className="text-sm text-foreground">{m.label}</span>
-                        <Select
-                          value={value || NONE}
-                          onValueChange={(v) => set({ channel_map: { ...form.channel_map, [m.key]: v === NONE ? '' : v } })}
-                        >
-                          <SelectTrigger className="h-9"><SelectValue placeholder="Не заполнять" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NONE}>Не заполнять</SelectItem>
-                            {channelField.items!.map((i) => <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Куда пришёл код при регистрации: Telegram, WhatsApp, MAX. В текстовое поле пишется название мессенджера</p>
-              )}
             </div>
           </div>
 
           <div className="space-y-1.5 sm:max-w-[50%] sm:pr-2">
-            <Label>ИНН компании</Label>
-            <Select value={form.inn_field} onValueChange={(v) => set({ inn_field: v })} disabled={!ref}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Label>Поле «Канал коммуникации»</Label>
+            <Select value={form.channel_field || NONE} onValueChange={(v) => set({ channel_field: v === NONE ? null : v, channel_map: {} })} disabled={!ref}>
+              <SelectTrigger><SelectValue placeholder="Не передавать" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="requisite">Реквизиты компании (стандарт Битрикс24)</SelectItem>
-                {innOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                <SelectItem value={NONE}>Не передавать</SelectItem>
+                {channelOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
               </SelectContent>
             </Select>
+            {channelField?.type === 'enumeration' && channelField.items?.length ? (
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Какое значение списка ставить для мессенджера, куда пришёл код</p>
+                {MESSENGER_CHANNELS.map((m) => {
+                  const value = form.channel_map?.[m.key] ?? autoMatch(m.label);
+                  return (
+                    <div key={m.key} className="grid grid-cols-[90px_1fr] items-center gap-2">
+                      <span className="text-sm text-foreground">{m.label}</span>
+                      <Select
+                        value={value || NONE}
+                        onValueChange={(v) => set({ channel_map: { ...form.channel_map, [m.key]: v === NONE ? '' : v } })}
+                      >
+                        <SelectTrigger className="h-9"><SelectValue placeholder="Не заполнять" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>Не заполнять</SelectItem>
+                          {channelField.items!.map((i) => <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Куда пришёл код при регистрации: Telegram, WhatsApp, MAX. В текстовое поле пишется название мессенджера</p>
+            )}
           </div>
 
           <div className="flex justify-end">
