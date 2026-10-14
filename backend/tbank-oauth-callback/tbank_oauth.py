@@ -5,6 +5,10 @@ import urllib.error
 import urllib.parse
 from typing import Any, Dict, List, Optional
 
+from ru_trusted_ca import build_ssl_context
+
+TBANK_SSL_CONTEXT = build_ssl_context()
+
 # T-Business ID / T-API хосты. Песочница не требует реального OAuth-обмена -
 # запросы принимаются с фиксированным тестовым токеном.
 SANDBOX_TOKEN = 'TBankSandboxToken'
@@ -48,7 +52,7 @@ def exchange_code_for_token(code: str, redirect_uri: str) -> Optional[Dict[str, 
     req = urllib.request.Request(OAUTH_TOKEN_URL, data=data, method='POST',
                                   headers={'Content-Type': 'application/x-www-form-urlencoded'})
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=10, context=TBANK_SSL_CONTEXT) as response:
             return json.loads(response.read().decode('utf-8'))
     except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
         return None
@@ -59,7 +63,7 @@ def _request(path: str, access_token: str, is_sandbox: bool) -> Optional[Any]:
     token = SANDBOX_TOKEN if is_sandbox else access_token
     req = urllib.request.Request(f'{base_url}{path}', headers={'Authorization': f'Bearer {token}'})
     try:
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=15, context=TBANK_SSL_CONTEXT) as response:
             return json.loads(response.read().decode('utf-8'))
     except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
         return None
