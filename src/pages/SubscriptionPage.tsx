@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { SUBSCRIPTION_STATUS, subscriptionEndDate, daysLeft, formatLongDate } from '@/lib/subscription';
 import functionUrls from '../../backend/func2url.json';
@@ -34,6 +35,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
   const [current, setCurrent] = useState<CurrentPlan | null>(null);
   const [period, setPeriod] = useState<Period>('month');
   const [selected, setSelected] = useState<string | null>(null);
+  const [planSheet, setPlanSheet] = useState(Boolean(highlightModule));
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState<{ title: string; until: string } | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
@@ -217,6 +219,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
       if (res.ok && data.success && data.payment_url) {
         const opened = openPaymentPage(data.payment_url);
         setPaymentLink({ url: data.payment_url, id: data.payment_id });
+        setPlanSheet(false);
         if (!opened) toast({ title: 'Браузер заблокировал новую вкладку', description: 'Нажмите «Перейти к оплате»' });
         return;
       }
@@ -252,7 +255,14 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
               left={left}
               canPay={canPay}
               currentPaid={currentPaid}
-              onRenew={setSelected}
+              onRenew={(slug) => {
+                setSelected(slug);
+                setPlanSheet(true);
+              }}
+              onChangePlan={() => {
+                setSelected(null);
+                setPlanSheet(true);
+              }}
             />
 
             {autopay?.card && (
@@ -273,44 +283,6 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
                 busy={autopayBusy}
                 onToggle={(v) => updateAutopay({ action: 'autopay', enabled: v }, v ? 'Автопродление включено' : 'Автопродление выключено')}
                 onRemoveCard={() => updateAutopay({ action: 'remove_card' }, 'Карта удалена')}
-              />
-            )}
-
-            <TariffPlansSection
-              tariffs={tariffs}
-              current={current}
-              currentSlug={currentSlug}
-              isTrial={isTrial}
-              selected={selected}
-              period={period}
-              canPay={canPay}
-              highlightModule={highlightModule}
-              price={price}
-              onPeriodChange={setPeriod}
-              onSelect={setSelected}
-            />
-
-            {chosen && canPay && (
-              <CheckoutPanel
-                chosen={chosen}
-                isRenewal={isRenewal}
-                period={period}
-                paying={paying}
-                payBlocked={payBlocked}
-                removing={removing}
-                checking={checking}
-                overage={overage}
-                keep={keep}
-                keepValid={keepValid}
-                confirmDelete={confirmDelete}
-                price={price}
-                onCancel={() => setSelected(null)}
-                onPay={pay}
-                onKeepChange={setKeep}
-                onConfirmDeleteChange={setConfirmDelete}
-                online={provider === 'tbank'}
-                recurringConsent={recurringConsent}
-                onRecurringConsentChange={setRecurringConsent}
               />
             )}
 
@@ -342,6 +314,62 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
           </div>
         </div>
       )}
+
+      <Sheet
+        open={planSheet}
+        onOpenChange={(o) => {
+          setPlanSheet(o);
+          if (!o) setSelected(null);
+        }}
+      >
+        <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
+          <div className="mx-auto w-full max-w-5xl space-y-6 pb-4">
+            <SheetHeader>
+              <SheetTitle>{isRenewal ? 'Продление тарифа' : 'Выбор тарифа'}</SheetTitle>
+            </SheetHeader>
+                <TariffPlansSection
+                  tariffs={tariffs}
+                  current={current}
+                  currentSlug={currentSlug}
+                  isTrial={isTrial}
+                  selected={selected}
+                  period={period}
+                  canPay={canPay}
+                  highlightModule={highlightModule}
+                  price={price}
+                  onPeriodChange={setPeriod}
+                  onSelect={setSelected}
+                />
+
+                {chosen && canPay && (
+                  <CheckoutPanel
+                    chosen={chosen}
+                    isRenewal={isRenewal}
+                    period={period}
+                    paying={paying}
+                    payBlocked={payBlocked}
+                    removing={removing}
+                    checking={checking}
+                    overage={overage}
+                    keep={keep}
+                    keepValid={keepValid}
+                    confirmDelete={confirmDelete}
+                    price={price}
+                    onCancel={() => {
+                  setSelected(null);
+                  setPlanSheet(false);
+                }}
+                    onPay={pay}
+                    onKeepChange={setKeep}
+                    onConfirmDeleteChange={setConfirmDelete}
+                    online={provider === 'tbank'}
+                    recurringConsent={recurringConsent}
+                    onRecurringConsentChange={setRecurringConsent}
+                  />
+                )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <PaymentResultDialog
         state={result}

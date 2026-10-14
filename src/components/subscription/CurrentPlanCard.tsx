@@ -13,9 +13,10 @@ interface CurrentPlanCardProps {
   canPay: boolean;
   currentPaid?: PlanTariff;
   onRenew: (slug: string) => void;
+  onChangePlan: () => void;
 }
 
-const CurrentPlanCard = ({ tariffName, status, isTrial, endDate, left, canPay, currentPaid, onRenew }: CurrentPlanCardProps) => (
+const CurrentPlanCard = ({ tariffName, status, isTrial, endDate, left, canPay, currentPaid, onRenew, onChangePlan }: CurrentPlanCardProps) => (
   <div className="rounded-lg border border-border bg-muted/30 p-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -36,11 +37,19 @@ const CurrentPlanCard = ({ tariffName, status, isTrial, endDate, left, canPay, c
           </span>
         )}
       </span>
-      {canPay && currentPaid && !isTrial && (
-        <Button size="sm" onClick={() => onRenew(currentPaid.slug)}>
-          <Icon name="RefreshCw" size={16} className="mr-2" />
-          Продлить
-        </Button>
+      {canPay && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={onChangePlan}>
+            <Icon name="ArrowLeftRight" size={16} className="mr-2" />
+            {isTrial || !currentPaid ? 'Выбрать тариф' : 'Сменить тариф'}
+          </Button>
+          {currentPaid && !isTrial && (
+            <Button size="sm" onClick={() => onRenew(currentPaid.slug)}>
+              <Icon name="RefreshCw" size={16} className="mr-2" />
+              Продлить
+            </Button>
+          )}
+        </div>
       )}
     </div>
   </div>
