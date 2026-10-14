@@ -9,6 +9,10 @@ export interface TbankConfig {
   receipt_enabled?: boolean;
   taxation?: string;
   vat?: string;
+  payment_method?: string;
+  payment_object?: string;
+  ffd?: string;
+  measurement_unit?: string;
 }
 
 interface TbankTerminalFormProps {
@@ -37,6 +41,21 @@ const VATS = [
   ['vat22', 'НДС 22%']
 ];
 
+const PAYMENT_METHODS = [
+  ['full_payment', 'Полный расчёт'],
+  ['full_prepayment', 'Предоплата 100%'],
+  ['prepayment', 'Предоплата'],
+  ['advance', 'Аванс']
+];
+
+const PAYMENT_OBJECTS = [
+  ['service', 'Услуга'],
+  ['intellectual_activity', 'Результаты интеллектуальной деятельности'],
+  ['job', 'Работа'],
+  ['commodity', 'Товар'],
+  ['another', 'Иной предмет расчёта']
+];
+
 const selectClass = 'h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground';
 
 const TbankTerminalForm = ({ terminalKey, config, busy, onSave, onCancel }: TbankTerminalFormProps) => {
@@ -45,6 +64,9 @@ const TbankTerminalForm = ({ terminalKey, config, busy, onSave, onCancel }: Tban
   const [receipt, setReceipt] = useState(Boolean(config.receipt_enabled));
   const [taxation, setTaxation] = useState(config.taxation || 'usn_income');
   const [vat, setVat] = useState(config.vat || 'none');
+  const [paymentMethod, setPaymentMethod] = useState(config.payment_method || 'full_payment');
+  const [paymentObject, setPaymentObject] = useState(config.payment_object || 'service');
+  const [ffd, setFfd] = useState(config.ffd || '1.2');
   const keepPassword = Boolean(terminalKey) && key === terminalKey;
 
   return (
@@ -90,6 +112,28 @@ const TbankTerminalForm = ({ terminalKey, config, busy, onSave, onCancel }: Tban
               {VATS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
+          <div className="space-y-1.5">
+            <Label>Признак способа расчёта</Label>
+            <select className={selectClass} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              {PAYMENT_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Признак предмета расчёта</Label>
+            <select className={selectClass} value={paymentObject} onChange={(e) => setPaymentObject(e.target.value)}>
+              {PAYMENT_OBJECTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Версия ФФД кассы</Label>
+            <select className={selectClass} value={ffd} onChange={(e) => setFfd(e.target.value)}>
+              <option value="1.2">1.2 (единица измерения «шт»)</option>
+              <option value="1.05">1.05</option>
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            В чеке одна позиция: «Подписка на сервис «Сверка», тариф «…», 1 мес.» на сумму оплаты.
+          </p>
         </div>
       )}
 
@@ -102,7 +146,10 @@ const TbankTerminalForm = ({ terminalKey, config, busy, onSave, onCancel }: Tban
         <Button
           disabled={busy || !key || (!password && !keepPassword)}
           onClick={() =>
-            onSave({ action: 'save_terminal', terminal_key: key, terminal_password: password, receipt_enabled: receipt, taxation, vat })
+            onSave({
+              action: 'save_terminal', terminal_key: key, terminal_password: password, receipt_enabled: receipt, taxation, vat,
+              payment_method: paymentMethod, payment_object: paymentObject, ffd, measurement_unit: 'шт'
+            })
           }
         >
           {busy ? <Icon name="Loader2" size={14} className="animate-spin mr-2" /> : <Icon name="Check" size={14} className="mr-2" />}

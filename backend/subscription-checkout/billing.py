@@ -160,29 +160,37 @@ def apply_state(cur, pay: Dict[str, Any], data: Dict[str, Any]) -> str:
     return pay['status']
 
 
-def create_payment(cur, company_id, user_id, tariff, period, *, keep=None, auto_renew=False, recurring=False) -> Dict[str, Any]:
+def receipt_title(tariff: Dict[str, Any], period: str, days: int) -> str:
+    term = '12 мес.' if period == 'year' else ('1 мес.' if days in (30, 31) else f'{days} дн.')
+    return f"Подписка на сервис «Сверка», тариф «{tariff['name']}», {term}"
+
+
+def create_payment(cur, company_id, user_id, tariff, period, *, keep=None, auto_renew=False, recurring=False,
+                   is_test=False) -> Dict[str, Any]:
     days, amount = period_terms(tariff, period)
     cur.execute(f'''
         INSERT INTO {SCHEMA}.subscription_payments
             (company_id, user_id, tariff_id, period, days, amount, status, method, provider_slug,
-             keep_data, auto_renew, is_recurring)
-        VALUES (%s, %s, %s, %s, %s, %s, 'pending', 'tbank', 'tbank', %s, %s, %s) RETURNING id
+             keep_data, auto_renew, is_recurring, is_test)
+        VALUES (%s, %s, %s, %s, %s, %s, 'pending', 'tbank', 'tbank', %s, %s, %s, %s) RETURNING id
     ''', (company_id, user_id, tariff['id'], period, days, amount,
-          json.dumps(keep) if keep else None, auto_renew, recurring))
+          json.dumps(keep) if keep else None, auto_renew, recurring, is_test))
     pay_id = cur.fetchone()[0]
     order_id = f'sv{pay_id}-{int(time.time())}'
     cur.execute(f'UPDATE {SCHEMA}.subscription_payments SET order_id = %s WHERE id = %s', (order_id, pay_id))
     return {'id': pay_id, 'order_id': order_id, 'amount': amount, 'days': days}
 
 
-def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, auto_renew) -> Dict[str, Any]:
+def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, auto_renew, is_test=False) -> Dict[str, Any]:
     '''Первый платёж с сохранением карты: ссылка на платёжную форму Т‑Банка.'''
-    p = create_payment(cur, company_id, user_id, tariff, period, keep=keep, auto_renew=auto_renew)
+    p = create_payment(cur, company_id, user_id, tariff, period, keep=keep, auto_renew=auto_renew, is_test=is_test)
     phone, email = _payer_contacts(cur, user_id)
-    back = f"{tbank_billing.SITE_URL}/app?section=subscription&sp={p['id']}"
+    back = (f"{tbank_billing.SITE_URL}/admin?section=payments&tp={p['id']}" if is_test
+            else f"{tbank_billing.SITE_URL}/app?section=subscription&sp={p['id']}")
     data, err = tbank_billing.init_payment(
         terminal, order_id=p['order_id'], amount_kop=int(round(p['amount'] * 100)),
         description=f"Подписка «{tariff['name']}» на {p['days']} дн.", customer_key=f'company-{company_id}',
+        receipt_title=receipt_title(tariff, period, p['days']),
         recurrent_first=True, phone=phone, email=email, success_url=back, fail_url=back)
     if err or not data or not data.get('PaymentURL'):
         cur.execute(f'''UPDATE {SCHEMA}.subscription_payments SET status = 'failed', error_message = %s,
@@ -195,7 +203,7 @@ def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, aut
 
 def handle_notification(cur, data: Dict[str, Any]) -> bool:
     '''Уведомление Т‑Банка о статусе платежа подписки. False - подпись не сошлась.'''
-    terminal = tbank_billing.load_terminal(cur)
+    terminal = tbank_billing.load_terminal(cur, only_enabled=False)
     if not terminal or not tbank_billing.verify(data, terminal['password']):
         print(f"[tbank-notify] bad token or no terminal order={data.get('OrderId')}")
         return False
@@ -217,7 +225,7 @@ def refresh(cur, company_id: int, payment_id: int) -> Optional[Dict[str, Any]]:
     if not pay or pay['company_id'] != int(company_id):
         return None
     if pay['status'] == 'pending' and pay['provider_payment_id']:
-        terminal = tbank_billing.load_terminal(cur)
+        terminal = tbank_billing.load_terminal(cur, only_enabled=False)
         if terminal:
             data, _ = tbank_billing.get_state(terminal, pay['provider_payment_id'])
             if data and data.get('Success'):
@@ -225,6 +233,36 @@ def refresh(cur, company_id: int, payment_id: int) -> Optional[Dict[str, Any]]:
                 pay = _load_payment(cur, 'p.id = %s', payment_id)
     return {'id': pay['id'], 'status': pay['status'], 'tariff_name': pay['tariff_name'],
             'period_end': pay['period_end'], 'amount': float(pay['amount']), 'error': pay['error']}
+
+
+def charge_saved_card(cur, conn, terminal, company_id: int, tariff: Dict[str, Any], period: str, rebill_id: str,
+                      payer_id: int, is_test: bool = False) -> Dict[str, Any]:
+    '''Списание по сохранённой карте без участия клиента: Init (MIT, R) + Charge с RebillId.'''
+    p = create_payment(cur, company_id, payer_id, tariff, period, recurring=True, is_test=is_test)
+    conn.commit()
+    phone, email = _payer_contacts(cur, payer_id)
+    data, err = tbank_billing.init_payment(
+        terminal, order_id=p['order_id'], amount_kop=int(round(p['amount'] * 100)),
+        description=f"Автопродление подписки «{tariff['name']}» на {p['days']} дн.",
+        receipt_title=receipt_title(tariff, period, p['days']),
+        customer_key=f'company-{company_id}', recurrent_first=False, phone=phone, email=email)
+    pay = _load_payment(cur, 'p.id = %s', p['id'])
+    if err or not data:
+        mark_failed(cur, pay, err or 'Т‑Банк не создал платёж')
+        conn.commit()
+        return {'payment_id': p['id'], 'status': 'failed', 'error': err}
+    cur.execute(f'UPDATE {SCHEMA}.subscription_payments SET provider_payment_id = %s WHERE id = %s',
+                (str(data.get('PaymentId')), p['id']))
+    conn.commit()
+    result, err = tbank_billing.charge(terminal, str(data.get('PaymentId')), rebill_id)
+    pay = _load_payment(cur, 'p.id = %s', p['id'])
+    if err and (not result or result.get('Status') != 'CONFIRMED'):
+        mark_failed(cur, pay, err)
+        status = 'failed'
+    else:
+        status = apply_state(cur, pay, result or {})
+    conn.commit()
+    return {'payment_id': p['id'], 'status': status, 'error': err, 'bank_status': (result or {}).get('Status')}
 
 
 def renew_due(cur, conn, budget_seconds: float = 3.2) -> Dict[str, Any]:
@@ -260,30 +298,8 @@ def renew_due(cur, conn, budget_seconds: float = 3.2) -> Dict[str, Any]:
         tariff = tariffs.get(tariff_id)
         if not tariff or not owner_id:
             continue
-        p = create_payment(cur, company_id, owner_id, tariff, period or 'month', recurring=True)
-        conn.commit()
-        phone, email = _payer_contacts(cur, owner_id)
-        data, err = tbank_billing.init_payment(
-            terminal, order_id=p['order_id'], amount_kop=int(round(p['amount'] * 100)),
-            description=f"Автопродление подписки «{tariff['name']}» на {p['days']} дн.",
-            customer_key=f'company-{company_id}', recurrent_first=False, phone=phone, email=email)
-        pay = _load_payment(cur, 'p.id = %s', p['id'])
-        if err or not data:
-            mark_failed(cur, pay, err or 'Т‑Банк не создал платёж')
-            conn.commit()
-            done.append({'company_id': company_id, 'status': 'failed'})
-            continue
-        cur.execute(f'UPDATE {SCHEMA}.subscription_payments SET provider_payment_id = %s WHERE id = %s',
-                    (str(data.get('PaymentId')), p['id']))
-        conn.commit()
-        result, err = tbank_billing.charge(terminal, str(data.get('PaymentId')), rebill_id)
-        pay = _load_payment(cur, 'p.id = %s', p['id'])
-        if err and (not result or result.get('Status') not in ('CONFIRMED',)):
-            mark_failed(cur, pay, err)
-            status = 'failed'
-        else:
-            status = apply_state(cur, pay, result or {})
-        conn.commit()
+        res = charge_saved_card(cur, conn, terminal, company_id, tariff, period or 'month', rebill_id, owner_id)
+        status = res['status']
         done.append({'company_id': company_id, 'status': status})
     print(f'[renew_due] {done}')
     return {'renewed': done}

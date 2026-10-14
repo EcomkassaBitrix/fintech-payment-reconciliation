@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict
 
 import psycopg2
-from auth_guard import guard
+from auth_guard import guard, is_platform_admin
 import billing
 import downgrade
 import tbank_billing
@@ -44,6 +44,63 @@ def autopay_view(cur, company_id) -> Dict[str, Any]:
             'card': {'pan': r[2], 'exp_date': r[3]} if r[2] else None}
 
 
+def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    '''
+    Тест оплаты Т‑Банка из админки (только админ платформы, работает и при выключенном приёме оплаты):
+    test_checkout {company_id, tariff_slug, period} - ссылка на форму с сохранением карты (Recurrent=Y)
+    test_charge {company_id} - списание по сохранённой карте компании прямо сейчас (как автопродление)
+    test_status {payment_id} - статус платежа (с запросом GetState)
+    '''
+    user_id = event.get('session_user_id')
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+    try:
+        if not user_id or not is_platform_admin(cur, user_id):
+            return respond(403, {'error': 'Только для администратора платформы'})
+        terminal = tbank_billing.load_terminal(cur, only_enabled=False)
+        if not terminal:
+            return respond(400, {'error': 'Терминал Т‑Банка не подключён'})
+        action = body['action']
+        if action == 'test_status':
+            cur.execute(f'SELECT company_id FROM {SCHEMA}.subscription_payments WHERE id = %s', (body.get('payment_id'),))
+            row = cur.fetchone()
+            if not row:
+                return respond(404, {'error': 'Платёж не найден'})
+            result = billing.refresh(cur, row[0], int(body['payment_id']))
+            conn.commit()
+            return respond(200, {'success': True, 'payment': result})
+        company_id = int(body.get('company_id') or 0)
+        cur.execute(f'SELECT id FROM {SCHEMA}.companies WHERE id = %s', (company_id,))
+        if not cur.fetchone():
+            return respond(400, {'error': 'Компания не найдена'})
+        tariffs = billing.load_tariffs(cur)
+        if action == 'test_checkout':
+            tariff = next((t for t in tariffs if t['slug'] == body.get('tariff_slug')), None)
+            if not tariff:
+                return respond(400, {'error': 'Тариф не найден'})
+            period = 'year' if body.get('period') == 'year' else 'month'
+            result = billing.start_checkout(cur, terminal, company_id, user_id, tariff, period, None, True, is_test=True)
+            conn.commit()
+            return respond(200, result)
+        cur.execute(f'''
+            SELECT s.tariff_id, s.renew_period, c.rebill_id FROM {SCHEMA}.subscriptions s
+            JOIN {SCHEMA}.subscription_cards c ON c.id = s.card_id AND c.is_active = true
+            WHERE s.company_id = %s
+        ''', (company_id,))
+        row = cur.fetchone()
+        if not row:
+            return respond(400, {'error': 'У компании нет сохранённой карты — сначала проведите тестовую оплату'})
+        tariff = next((t for t in tariffs if t['id'] == row[0]), None)
+        if not tariff:
+            return respond(400, {'error': 'Тариф компании недоступен для оплаты'})
+        result = billing.charge_saved_card(cur, conn, terminal, company_id, tariff, row[1] or 'month', row[2], user_id,
+                                           is_test=True)
+        return respond(200, {'success': result['status'] == 'paid', **result})
+    finally:
+        cur.close()
+        conn.close()
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Подписка компании: тарифы, история оплат, оплата через Т‑Банк с сохранением карты и автопродление.
@@ -71,6 +128,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             conn.close()
         return {'statusCode': 200 if ok else 403, 'headers': {'Content-Type': 'text/plain'},
                 'body': 'OK' if ok else 'BAD TOKEN', 'isBase64Encoded': False}
+
+    raw_body = json.loads(event.get('body') or '{}') if event.get('httpMethod') == 'POST' else {}
+    if raw_body.get('action') in ('test_checkout', 'test_charge', 'test_status'):
+        denied = guard(event, check_company=False)
+        if denied:
+            return denied
+        return admin_test(event, raw_body)
 
     denied = guard(event)
     if denied:

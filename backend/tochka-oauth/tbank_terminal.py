@@ -10,7 +10,9 @@ SCHEMA = 't_p83864310_fintech_payment_reco'
 API = 'https://securepay.tinkoff.ru/v2'
 SSL_CONTEXT = build_ssl_context()
 TAXATIONS = ('osn', 'usn_income', 'usn_income_outcome', 'esn', 'patent')
-VATS = ('none', 'vat0', 'vat5', 'vat7', 'vat10', 'vat20', 'vat22')
+VATS = ('none', 'vat0', 'vat5', 'vat7', 'vat10', 'vat20', 'vat22', 'vat105', 'vat107', 'vat110', 'vat120', 'vat122')
+PAYMENT_METHODS = ('full_payment', 'full_prepayment', 'prepayment', 'advance', 'partial_payment', 'credit', 'credit_payment')
+PAYMENT_OBJECTS = ('service', 'commodity', 'job', 'intellectual_activity', 'payment', 'agent_commission', 'composite', 'another')
 
 
 def _probe(terminal_key: str, password: str) -> Tuple[bool, Optional[str]]:
@@ -54,7 +56,13 @@ def save(cur, body: Dict[str, Any], user_id) -> Optional[str]:
         return err
     taxation = body.get('taxation') if body.get('taxation') in TAXATIONS else 'usn_income'
     vat = body.get('vat') if body.get('vat') in VATS else 'none'
-    config = {'receipt_enabled': bool(body.get('receipt_enabled')), 'taxation': taxation, 'vat': vat}
+    config = {
+        'receipt_enabled': bool(body.get('receipt_enabled')), 'taxation': taxation, 'vat': vat,
+        'payment_method': body.get('payment_method') if body.get('payment_method') in PAYMENT_METHODS else 'full_payment',
+        'payment_object': body.get('payment_object') if body.get('payment_object') in PAYMENT_OBJECTS else 'service',
+        'ffd': '1.05' if body.get('ffd') == '1.05' else '1.2',
+        'measurement_unit': (str(body.get('measurement_unit') or 'шт').strip()[:16] or 'шт'),
+    }
     cur.execute(f'''
         UPDATE {SCHEMA}.platform_payment_providers SET terminal_key = %s, terminal_password = %s,
             is_test = %s, config = %s, connected_at = NOW(), connected_by = %s, updated_at = NOW()

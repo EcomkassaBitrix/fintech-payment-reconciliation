@@ -37,6 +37,7 @@ interface Transaction {
   refunded_at: string | null;
   refund_amount: number | null;
   can_refund: boolean;
+  is_test?: boolean;
 }
 
 const api = `${(functionUrls as Record<string, string>)['tochka-oauth']}?provider=yookassa`;
@@ -184,7 +185,10 @@ const AdminSubscriptionTransactions = () => {
                     return (
                       <TableRow key={tx.id}>
                         <TableCell>
-                          <div className="font-medium text-foreground">{tx.company_name}</div>
+                          <div className="font-medium text-foreground">
+                            {tx.company_name}
+                            {tx.is_test && <Badge variant="outline" className="ml-2 text-[10px]">тест</Badge>}
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             {tx.tariff_name} · {tx.period === 'year' ? 'год' : 'месяц'}
                             {tx.is_recurring && ' · автопродление'}

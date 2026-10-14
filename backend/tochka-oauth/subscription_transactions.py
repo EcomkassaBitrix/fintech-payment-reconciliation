@@ -54,13 +54,14 @@ def _row_json(r) -> Dict[str, Any]:
         'is_recurring': r[12], 'refunded_at': r[13],
         'refund_amount': float(r[14]) if r[14] is not None else None,
         'can_refund': r[8] == 'paid' and provider in REFUNDABLE and bool(r[15]),
+        'is_test': bool(r[16]),
     }
 
 
 SELECT = f'''
     SELECT p.id, p.company_id, COALESCE(NULLIF(c.full_name, ''), c.name), c.inn,
            COALESCE(p.paid_at, p.created_at), p.amount, p.provider_slug, p.method, p.status, p.error_message,
-           t.name, p.period, p.is_recurring, p.refunded_at, p.refund_amount, p.provider_payment_id
+           t.name, p.period, p.is_recurring, p.refunded_at, p.refund_amount, p.provider_payment_id, p.is_test
     FROM {SCHEMA}.subscription_payments p
     JOIN {SCHEMA}.companies c ON c.id = p.company_id
     JOIN {SCHEMA}.tariffs t ON t.id = p.tariff_id

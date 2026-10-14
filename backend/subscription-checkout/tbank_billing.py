@@ -13,12 +13,16 @@ SITE_URL = 'https://s-verka.ru'
 SSL_CONTEXT = build_ssl_context()
 
 
-def load_terminal(cur) -> Optional[Dict[str, Any]]:
-    '''Терминал Т‑Банка платформы, если подключён и приём оплаты включён.'''
+def load_terminal(cur, only_enabled: bool = True) -> Optional[Dict[str, Any]]:
+    '''
+    Терминал Т‑Банка платформы. only_enabled - только если включён «Принимать оплату» (новые оплаты клиентов).
+    Уведомления, статусы, возвраты и тест из админки работают с подключённым терминалом и при выключенном приёме.
+    '''
     cur.execute(f'''
         SELECT terminal_key, terminal_password, is_test, config FROM {SCHEMA}.platform_payment_providers
-        WHERE slug = 'tbank' AND is_enabled = true AND terminal_key IS NOT NULL AND terminal_password IS NOT NULL
-    ''')
+        WHERE slug = 'tbank' AND terminal_key IS NOT NULL AND terminal_password IS NOT NULL
+          AND (is_enabled = true OR %s = false)
+    ''', (only_enabled,))
     r = cur.fetchone()
     if not r:
         return None
@@ -61,27 +65,38 @@ def call(terminal: Dict[str, Any], method: str, payload: Dict[str, Any], timeout
 
 
 def receipt(terminal: Dict[str, Any], title: str, amount_kop: int, phone: Optional[str], email: Optional[str]) -> Optional[Dict[str, Any]]:
-    '''Чек 54‑ФЗ, если в настройках терминала включена передача чека.'''
+    '''
+    Чек для онлайн-кассы Т‑Банка: одна позиция - тариф подписки. Признаки способа (1214) и предмета
+    (1212) расчёта, НДС, СНО и версия ФФД - из настроек терминала в админке. Для ФФД 1.2 обязательна
+    единица измерения (2108). Контакт покупателя - почта, иначе телефон.
+    '''
     cfg = terminal['config']
     if not cfg.get('receipt_enabled'):
         return None
-    r: Dict[str, Any] = {
-        'Taxation': cfg.get('taxation') or 'usn_income',
-        'Items': [{
-            'Name': title[:128], 'Price': amount_kop, 'Quantity': 1, 'Amount': amount_kop,
-            'Tax': cfg.get('vat') or 'none', 'PaymentMethod': 'full_payment', 'PaymentObject': 'service'
-        }]
+    item: Dict[str, Any] = {
+        'Name': title[:128], 'Price': amount_kop, 'Quantity': 1, 'Amount': amount_kop,
+        'Tax': cfg.get('vat') or 'none',
+        'PaymentMethod': cfg.get('payment_method') or 'full_payment',
+        'PaymentObject': cfg.get('payment_object') or 'service',
     }
+    if (cfg.get('ffd') or '1.2') == '1.2':
+        item['MeasurementUnit'] = cfg.get('measurement_unit') or 'шт'
+    r: Dict[str, Any] = {'Taxation': cfg.get('taxation') or 'usn_income', 'Items': [item]}
+    if (cfg.get('ffd') or '1.2') == '1.2':
+        r['FfdVersion'] = '1.2'
     if email:
         r['Email'] = email
     elif phone:
-        r['Phone'] = '+' + ''.join(ch for ch in phone if ch.isdigit())
+        digits = ''.join(ch for ch in phone if ch.isdigit())
+        if digits:
+            r['Phone'] = '+' + digits
     return r
 
 
 def init_payment(terminal: Dict[str, Any], *, order_id: str, amount_kop: int, description: str, customer_key: str,
                  recurrent_first: bool, phone: Optional[str] = None, email: Optional[str] = None,
-                 success_url: Optional[str] = None, fail_url: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+                 success_url: Optional[str] = None, fail_url: Optional[str] = None,
+                 receipt_title: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     '''
     Init. Первый платёж - с Recurrent=Y и CustomerKey: Т‑Банк сохранит карту и пришлёт RebillId
     в уведомлении. Для автосписания - Init без формы оплаты, затем Charge с RebillId.
@@ -99,7 +114,7 @@ def init_payment(terminal: Dict[str, Any], *, order_id: str, amount_kop: int, de
             payload['FailURL'] = fail_url
     else:
         payload['OperationInitiatorType'] = 'R'
-    rec = receipt(terminal, description, amount_kop, phone, email)
+    rec = receipt(terminal, receipt_title or description, amount_kop, phone, email)
     if rec:
         payload['Receipt'] = rec
     return call(terminal, 'Init', payload)
