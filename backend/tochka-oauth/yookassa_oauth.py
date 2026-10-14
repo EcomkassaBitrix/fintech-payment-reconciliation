@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 import psycopg2
 from auth_guard import guard, is_platform_admin
 import tbank_terminal
+import subscription_transactions
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 PROVIDER_SLUG = 'yookassa'
@@ -108,6 +109,8 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     POST {action: "disconnect", slug}        -> отключить магазин
     POST {action: "save_terminal", terminal_key, terminal_password, receipt_enabled, taxation, vat}
                                              -> терминал Т‑Банка (проверяется запросом в банк)
+    GET  ?action=transactions&provider=&status=&search=&limit=&offset= -> платежи за подписку всех клиентов
+    POST {action: "refund", payment_id}      -> полный возврат через платёжную систему (Т‑Банк: Cancel)
     GET  ?action=check&slug=tbank            -> проверить терминал Т‑Банка
     '''
     denied = guard(event, check_company=False)
@@ -137,6 +140,8 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     'state': 'platform',
                 })
                 return _resp(200, {'success': True, 'authorize_url': f'{AUTHORIZE_URL}?{query}'})
+            if action == 'transactions':
+                return _resp(200, subscription_transactions.list_transactions(cur, params))
             if action == 'check' and params.get('slug') == 'tbank':
                 return _resp(200, tbank_terminal.check(cur))
             if action == 'check':
@@ -153,6 +158,10 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         if method == 'POST':
             body = json.loads(event.get('body') or '{}')
             action = body.get('action')
+            if action == 'refund':
+                result = subscription_transactions.refund(cur, int(body.get('payment_id') or 0), user_id)
+                conn.commit()
+                return _resp(200, result)
             if action == 'save_terminal':
                 err = tbank_terminal.save(cur, body, user_id)
                 if err:
