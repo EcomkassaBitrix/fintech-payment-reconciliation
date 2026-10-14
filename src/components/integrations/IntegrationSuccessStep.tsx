@@ -35,7 +35,7 @@ const IntegrationSuccessStep = ({
         </div>
       </div>
 
-      {autoWebhook ? (
+      {selectedProvider.slug === 'ecomkassa_gateway' ? null : autoWebhook ? (
         <div className="bg-info/10 p-4 rounded-lg">
           <div className="flex items-start gap-2">
             <Icon name="Info" className="text-info mt-0.5" size={18} />
