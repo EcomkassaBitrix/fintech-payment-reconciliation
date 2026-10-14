@@ -219,7 +219,7 @@ const AdminPlatformCrmSection = () => {
                   {stageGroups.map((g) => (
                     <SelectGroup key={g.key}>
                       <SelectLabel className="text-xs text-muted-foreground">{g.label}</SelectLabel>
-                      {g.items.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                      {g.items.map((s) => <SelectItem key={s.value} value={s.value}>{s.group ? `${s.group}: ${s.label}` : s.label}</SelectItem>)}
                     </SelectGroup>
                   ))}
                 </SelectContent>
