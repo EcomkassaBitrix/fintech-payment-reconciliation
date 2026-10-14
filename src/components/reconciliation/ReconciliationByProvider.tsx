@@ -34,11 +34,17 @@ const ReconciliationByProvider = ({ paymentsByProvider }: ReconciliationByProvid
     }),
     { amount: 0, count: 0, commission: 0 }
   );
-  const commissionCell = (value: number) => (
-    <span className={value > 0 ? 'text-warning' : 'text-muted-foreground'}>
-      {value > 0 ? `−${formatMoney(value)}` : '—'}
-    </span>
-  );
+  const formatPercent = (value: number, base: number) =>
+    `${((value / base) * 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}%`;
+  const commissionCell = (value: number, base: number) =>
+    value > 0 ? (
+      <>
+        <div className="text-warning">−{formatMoney(value)}</div>
+        {base > 0 && <div className="text-xs text-muted-foreground">{formatPercent(value, base)}</div>}
+      </>
+    ) : (
+      <span className="text-muted-foreground">—</span>
+    );
 
   return (
     <Card>
@@ -65,7 +71,7 @@ const ReconciliationByProvider = ({ paymentsByProvider }: ReconciliationByProvid
                 <div className="text-sm font-medium text-foreground whitespace-nowrap">{formatMoney(stats.amount)}</div>
                 <div className="text-xs text-muted-foreground whitespace-nowrap">{stats.count} {plural(stats.count)}</div>
               </div>
-              <div className="w-24 shrink-0 text-right text-sm whitespace-nowrap">{commissionCell(stats.commission || 0)}</div>
+              <div className="w-24 shrink-0 text-right text-sm whitespace-nowrap">{commissionCell(stats.commission || 0, stats.amount)}</div>
             </div>
           ))}
           <div className="flex items-center gap-4 pt-3">
@@ -74,7 +80,7 @@ const ReconciliationByProvider = ({ paymentsByProvider }: ReconciliationByProvid
               <div className="text-sm font-semibold text-foreground whitespace-nowrap">{formatMoney(total.amount)}</div>
               <div className="text-xs text-muted-foreground whitespace-nowrap">{total.count} {plural(total.count)}</div>
             </div>
-            <div className="w-24 shrink-0 text-right text-sm font-semibold whitespace-nowrap">{commissionCell(total.commission)}</div>
+            <div className="w-24 shrink-0 text-right text-sm font-semibold whitespace-nowrap">{commissionCell(total.commission, total.amount)}</div>
           </div>
         </div>
       </CardContent>
