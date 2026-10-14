@@ -141,15 +141,7 @@ const AdminPaymentProvidersSection = () => {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-foreground">{p.name}</p>
-                        {showForm ? (
-                  <TbankTerminalForm
-                    terminalKey={p.shop_id}
-                    config={p.config || {}}
-                    busy={busy}
-                    onSave={(body) => post(p.slug, body, 'Терминал Т‑Банка сохранён')}
-                    onCancel={p.connected ? () => setEditing(null) : undefined}
-                  />
-                ) : p.connected ? (
+                        {p.connected ? (
                           <Badge variant="outline" className="bg-success/10 text-success border-success/20">Подключено</Badge>
                         ) : (
                           <Badge variant="outline">Не подключено</Badge>
@@ -171,7 +163,15 @@ const AdminPaymentProvidersSection = () => {
                   </div>
                 </div>
 
-                {p.connected ? (
+                {showForm ? (
+                  <TbankTerminalForm
+                    terminalKey={p.shop_id}
+                    config={p.config || {}}
+                    busy={busy}
+                    onSave={(body) => post(p.slug, body, 'Терминал Т‑Банка сохранён')}
+                    onCancel={p.connected ? () => setEditing(null) : undefined}
+                  />
+                ) : p.connected ? (
                   <div className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-sm space-y-0.5">
                       <p className="text-foreground">
