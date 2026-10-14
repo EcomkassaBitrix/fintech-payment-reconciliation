@@ -3,14 +3,17 @@ import { Link } from 'react-router-dom';
 import Icon from '@/components/ui/icon';
 import LandingFooter from '@/components/landing/LandingFooter';
 import functionUrls from '../../backend/func2url.json';
-import { LEGAL_EMAIL, LEGAL_SITE, LegalOperator, LegalSection, PRIVACY_POLICY, TERMS, operatorTitle } from '@/content/legalDocuments';
+import { LEGAL_EMAIL, LEGAL_SITE, LegalOperator, LegalSection, PAYMENT_TERMS, PRIVACY_POLICY, TERMS, operatorTitle } from '@/content/legalDocuments';
 
-const DOCUMENTS: Record<'terms' | 'privacy', { title: string; sections: LegalSection[] }> = {
+type LegalDoc = 'terms' | 'privacy' | 'payment';
+
+const DOCUMENTS: Record<LegalDoc, { title: string; sections: LegalSection[] }> = {
   terms: { title: 'Пользовательское соглашение', sections: TERMS },
-  privacy: { title: 'Политика в отношении обработки персональных данных', sections: PRIVACY_POLICY }
+  privacy: { title: 'Политика в отношении обработки персональных данных', sections: PRIVACY_POLICY },
+  payment: { title: 'Оплата, возврат и безопасность платежей', sections: PAYMENT_TERMS }
 };
 
-const LegalDocumentPage = ({ doc }: { doc: 'terms' | 'privacy' }) => {
+const LegalDocumentPage = ({ doc }: { doc: LegalDoc }) => {
   const { title, sections } = DOCUMENTS[doc];
   const [operator, setOperator] = useState<LegalOperator | null>(null);
 
@@ -37,17 +40,20 @@ const LegalDocumentPage = ({ doc }: { doc: 'terms' | 'privacy' }) => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
-        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex min-h-16 max-w-4xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link to="/" className="flex items-center gap-2">
             <Icon name="Zap" size={22} className="text-primary" />
             <span className="font-display text-lg font-bold text-foreground">Сверка</span>
           </Link>
-          <nav className="flex gap-4 text-sm">
+          <nav className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs sm:text-sm">
             <Link to="/terms" className={doc === 'terms' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
               Соглашение
             </Link>
             <Link to="/legal" className={doc === 'privacy' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
               Политика ПДн
+            </Link>
+            <Link to="/payment" className={doc === 'payment' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
+              Оплата и возврат
             </Link>
           </nav>
         </div>

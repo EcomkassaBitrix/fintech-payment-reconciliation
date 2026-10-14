@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Icon from '@/components/ui/icon';
+import PaymentLogos from './PaymentLogos';
 import functionUrls from '../../../backend/func2url.json';
 
 interface Operator {
@@ -80,12 +81,22 @@ const LandingFooter = ({ showCases = false }: { showCases?: boolean }) => {
             <div className="flex flex-col gap-2 text-sm md:items-end">
               <a href="/terms" className="text-muted-foreground hover:text-foreground transition-colors">Пользовательское соглашение</a>
               <a href="/legal" className="text-muted-foreground hover:text-foreground transition-colors">Политика обработки персональных данных</a>
+              <a href="/payment" className="text-muted-foreground hover:text-foreground transition-colors">Оплата, возврат и безопасность</a>
             </div>
           </div>
         </div>
 
-        <div className="mt-10 pt-6 border-t border-border text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Сверка. Платформа контроля 54-ФЗ.
+        <div className="mt-10 flex flex-col gap-4 border-t border-border pt-6 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+          <span>© {new Date().getFullYear()} Сверка. Платформа контроля 54-ФЗ. Сервис российского разработчика.</span>
+          <div className="flex flex-col gap-2 md:items-end">
+            <PaymentLogos />
+            <span className="text-xs">
+              Платежи принимает АО «ТБанк» ·{' '}
+              <a href="https://www.tbank.ru/" target="_blank" rel="noopener noreferrer" className="hover:text-foreground underline">
+                tbank.ru
+              </a>
+            </span>
+          </div>
         </div>
       </div>
     </footer>

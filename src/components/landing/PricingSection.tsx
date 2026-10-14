@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import PaymentLogos from './PaymentLogos';
 import { ecomAdd, ecomImpressions } from '@/lib/metrika';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -195,6 +196,17 @@ const PricingSection = ({ onCtaClick, trialDays, tariffs: loaded }: { onCtaClick
               </Card>
             );
           })}
+        </div>
+        <div className="mt-10 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+          <PaymentLogos className="justify-center" />
+          <p className="max-w-2xl">
+            Цены в рублях. Онлайн‑сервис, доступ открывается сразу после оплаты картой «Мир», Visa, Mastercard или через
+            T‑Pay на защищённой странице АО «ТБанк». Автопродление отключается в любой момент, деньги за
+            неиспользованный период возвращаются по заявлению.{' '}
+            <a href="/payment" className="text-primary hover:underline">
+              Условия оплаты и возврата
+            </a>
+          </p>
         </div>
       </div>
     </section>

@@ -43,6 +43,7 @@ const App = () => (
               <Route path="/oauth/yookassa" element={<YookassaOAuthCallback />} />
               <Route path="/terms" element={<LegalDocumentPage doc="terms" />} />
               <Route path="/legal" element={<LegalDocumentPage doc="privacy" />} />
+              <Route path="/payment" element={<LegalDocumentPage doc="payment" />} />
               <Route path="/app" element={<RequireAuth><Index /></RequireAuth>} />
               <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
               <Route path="/webhook-logs/:integrationId" element={<RequireAuth><WebhookLogsPage /></RequireAuth>} />

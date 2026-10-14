@@ -85,7 +85,12 @@ const CheckoutPanel = ({
         </label>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Icon name="ShieldCheck" size={14} />
-          Оплата на защищённой странице Т‑Банка. Карта сохраняется в банке, у нас — только последние цифры.
+          <span>
+            Оплата на защищённой странице Т‑Банка. Карта сохраняется в банке, у нас — только последние цифры.{' '}
+            <a href="/payment" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              Условия оплаты и возврата
+            </a>
+          </span>
         </div>
       </div>
     )}
