@@ -578,7 +578,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if method == 'POST' and body.get('action') == 'crm_process':
             # Сигнал от регистрации/профиля/компании (подписан ключом сервиса - пропущен guard).
             if headers.get('x-service-sign'):
-                return respond(200, {'success': True, **platform_crm.process_queue(cur, conn, 1.8)})
+                return respond(200, {'success': True, **platform_crm.process_queue(cur, conn, 0.8, max_events=1)})
 
         # Публично: баннеры для страниц личного кабинета (пустой текст - баннера нет).
         if method == 'GET' and params.get('banners') == '1':
@@ -654,7 +654,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 conn.rollback()
                 return respond(400, {'error': err})
             conn.commit()
-            stats = platform_crm.process_queue(cur, conn, 1.2)
+            stats = platform_crm.process_queue(cur, conn, 0.5, max_events=1)
             return respond(200, {'success': True, 'crm': platform_crm.load_settings(cur), 'processed': stats,
                                  'events': platform_crm.recent_events(cur), 'pending': platform_crm.pending_count(cur)})
 
@@ -665,7 +665,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if body.get('event_id'):
                 platform_crm.retry_event(cur, int(body['event_id']))
                 conn.commit()
-            stats = platform_crm.process_queue(cur, conn, 1.5)
+            # По кнопке - одно событие за запрос: передача клиента с компанией занимает до ~2 с,
+            # иначе запрос не укладывается в тайм-аут функции. Очередь до конца гоняет кабинет.
+            stats = platform_crm.process_queue(cur, conn, 1.0, max_events=1)
             return respond(200, {'success': True, 'processed': stats, 'events': platform_crm.recent_events(cur),
                                  'pending': platform_crm.pending_count(cur)})
 

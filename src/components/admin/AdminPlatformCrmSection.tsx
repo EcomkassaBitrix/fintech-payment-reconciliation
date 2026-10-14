@@ -142,13 +142,22 @@ const AdminPlatformCrmSection = () => {
     let done = 0;
     let failed = 0;
     try {
-      for (let round = 0; round < 30; round += 1) {
-        const res = await fetch(api, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'crm_retry', requester_user_id: user.user_id, event_id: round === 0 ? eventId : undefined })
-        });
-        const data = await res.json();
+      let networkErrors = 0;
+      for (let round = 0; round < 200; round += 1) {
+        let data;
+        try {
+          const res = await fetch(api, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'crm_retry', requester_user_id: user.user_id, event_id: round === 0 ? eventId : undefined })
+          });
+          data = await res.json();
+          networkErrors = 0;
+        } catch {
+          networkErrors += 1;
+          if (networkErrors >= 3) throw new Error('network');
+          continue;
+        }
         if (!data.success) {
           toast({ title: 'Не отправлено', description: data.error, variant: 'destructive' });
           return;
@@ -162,7 +171,11 @@ const AdminPlatformCrmSection = () => {
       }
       toast({ title: `Передано: ${done}, с ошибкой: ${failed}` });
     } catch {
-      toast({ title: 'Ошибка подключения', variant: 'destructive' });
+      toast({
+        title: `Передано: ${done}, с ошибкой: ${failed}`,
+        description: 'Битрикс24 отвечает слишком долго — нажмите «Отправить очередь» ещё раз, продолжим с того же места',
+        variant: 'destructive'
+      });
     } finally {
       setBusy(false);
     }

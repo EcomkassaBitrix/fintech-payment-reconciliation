@@ -482,7 +482,7 @@ def handle_company(cur, webhook: str, settings: Dict[str, Any], event: Dict[str,
 HANDLERS = {'register': handle_register, 'profile': handle_profile, 'company': handle_company}
 
 
-def process_queue(cur, conn, budget_sec: float = 1.8) -> Dict[str, int]:
+def process_queue(cur, conn, budget_sec: float = 1.8, max_events: int = 1000) -> Dict[str, int]:
     '''Разбор очереди событий по порядку, пока есть время. Повторы: 1, 5, 15, 60 минут.'''
     settings = load_settings(cur)
     stats = {'done': 0, 'failed': 0, 'skipped': 0}
@@ -491,7 +491,7 @@ def process_queue(cur, conn, budget_sec: float = 1.8) -> Dict[str, int]:
     webhook = settings['webhook_url']
     started = time.time()
     cache: Dict[str, Any] = {}
-    while time.time() - started < budget_sec:
+    while time.time() - started < budget_sec and stats['done'] + stats['failed'] < max_events:
         cur.execute(f'''
             SELECT id, kind, user_id, company_id, attempts, payload FROM {SCHEMA}.platform_crm_events
             WHERE status IN ('new', 'retry') AND next_attempt_at <= NOW()
