@@ -5,6 +5,13 @@
       "method": "GET",
       "path": "/?company_id=1",
       "expectedStatus": 401
+    },
+    {
+      "name": "Уведомление Т-Банка с неверной подписью отклоняется",
+      "method": "POST",
+      "path": "/?tbank_notify=1",
+      "body": {"TerminalKey": "x", "OrderId": "sv0-0", "Status": "CONFIRMED", "Token": "bad"},
+      "expectedStatus": 403
     }
   ]
 }

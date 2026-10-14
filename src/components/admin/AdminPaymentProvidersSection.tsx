@@ -7,6 +7,7 @@ import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/formatDate';
 import functionUrls from '../../../backend/func2url.json';
+import TbankTerminalForm, { TbankConfig } from './TbankTerminalForm';
 
 interface PaymentProvider {
   slug: string;
@@ -20,6 +21,7 @@ interface PaymentProvider {
   connected_by: string | null;
   connected: boolean;
   configured: boolean;
+  config?: TbankConfig;
 }
 
 const api = `${(functionUrls as Record<string, string>)['tochka-oauth']}?provider=yookassa`;
@@ -29,6 +31,7 @@ const AdminPaymentProvidersSection = () => {
   const [providers, setProviders] = useState<PaymentProvider[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [busySlug, setBusySlug] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
 
   const replace = (p: PaymentProvider) => setProviders((prev) => prev.map((x) => (x.slug === p.slug ? p : x)));
 
@@ -58,6 +61,7 @@ const AdminPaymentProvidersSection = () => {
       const data = await res.json();
       if (data.success) {
         replace(data.provider);
+        setEditing(null);
         toast({ title: success });
       } else {
         toast({ title: 'Ошибка', description: data.error, variant: 'destructive' });
@@ -88,12 +92,12 @@ const AdminPaymentProvidersSection = () => {
   const check = async (slug: string) => {
     setBusySlug(slug);
     try {
-      const res = await fetch(`${api}&action=check`);
+      const res = await fetch(`${api}&action=check&slug=${slug}`);
       const data = await res.json();
       if (data.success) {
         const s = data.shop || {};
         toast({
-          title: 'Магазин отвечает',
+          title: slug === 'tbank' ? 'Терминал отвечает' : 'Магазин отвечает',
           description: `№ ${s.account_id || '—'} · ${s.test ? 'тестовый' : 'боевой'} · статус ${s.status || '—'}`
         });
       } else {
@@ -124,6 +128,8 @@ const AdminPaymentProvidersSection = () => {
       <div className="space-y-4">
         {providers.map((p) => {
           const busy = busySlug === p.slug;
+          const isTbank = p.slug === 'tbank';
+          const showForm = isTbank && (editing === p.slug || !p.connected);
           return (
             <Card key={p.slug} className="border-border bg-card">
               <CardContent className="p-5 space-y-4">
@@ -135,12 +141,22 @@ const AdminPaymentProvidersSection = () => {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-foreground">{p.name}</p>
-                        {p.connected ? (
+                        {showForm ? (
+                  <TbankTerminalForm
+                    terminalKey={p.shop_id}
+                    config={p.config || {}}
+                    busy={busy}
+                    onSave={(body) => post(p.slug, body, 'Терминал Т‑Банка сохранён')}
+                    onCancel={p.connected ? () => setEditing(null) : undefined}
+                  />
+                ) : p.connected ? (
                           <Badge variant="outline" className="bg-success/10 text-success border-success/20">Подключено</Badge>
                         ) : (
                           <Badge variant="outline">Не подключено</Badge>
                         )}
-                        {p.connected && p.is_test && <Badge variant="outline">Тестовый магазин</Badge>}
+                        {p.connected && p.is_test && (
+                          <Badge variant="outline">{isTbank ? 'Тестовый терминал' : 'Тестовый магазин'}</Badge>
+                        )}
                       </div>
                       {p.description && <p className="text-sm text-muted-foreground mt-1">{p.description}</p>}
                     </div>
@@ -158,7 +174,10 @@ const AdminPaymentProvidersSection = () => {
                 {p.connected ? (
                   <div className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-sm space-y-0.5">
-                      <p className="text-foreground">Магазин № {p.shop_id || '—'}</p>
+                      <p className="text-foreground">
+                        {isTbank ? `Терминал ${p.shop_id || '—'}` : `Магазин № ${p.shop_id || '—'}`}
+                        {isTbank && p.config?.receipt_enabled && <span className="text-muted-foreground"> · чек передаётся</span>}
+                      </p>
                       <p className="text-muted-foreground">
                         Подключил {p.connected_by || '—'} · {formatDateTime(p.connected_at)}
                       </p>
@@ -168,12 +187,19 @@ const AdminPaymentProvidersSection = () => {
                         <Icon name="Activity" size={14} className="mr-2" />
                         Проверить
                       </Button>
-                      <Button variant="outline" size="sm" disabled={busy} onClick={() => connect(p.slug)}>
-                        <Icon name="RefreshCw" size={14} className="mr-2" />
-                        Переподключить
-                      </Button>
+                      {isTbank ? (
+                        <Button variant="outline" size="sm" disabled={busy} onClick={() => setEditing(p.slug)}>
+                          <Icon name="Pencil" size={14} className="mr-2" />
+                          Изменить
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" disabled={busy} onClick={() => connect(p.slug)}>
+                          <Icon name="RefreshCw" size={14} className="mr-2" />
+                          Переподключить
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" disabled={busy}
-                        onClick={() => post(p.slug, { action: 'disconnect' }, 'Магазин отключён')}>
+                        onClick={() => post(p.slug, { action: 'disconnect' }, isTbank ? 'Терминал отключён' : 'Магазин отключён')}>
                         Отключить
                       </Button>
                     </div>

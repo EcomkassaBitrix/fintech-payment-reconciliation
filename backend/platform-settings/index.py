@@ -41,6 +41,7 @@ OFD_URL = 'https://functions.poehali.dev/c7fad594-b60b-47fb-8f73-31b629f1e0a2'
 NOTIFICATIONS_URL = 'https://functions.poehali.dev/8f4541fc-6ff8-4816-a954-324e4278743d'
 BANK_URL = 'https://functions.poehali.dev/916892e2-fd4d-4106-8d92-a95be195aa99'
 SELF_URL = 'https://functions.poehali.dev/9e410f34-57f5-40ff-85f6-ccc802b812d9'
+SUBSCRIPTION_URL = 'https://functions.poehali.dev/51f17dfc-af76-4415-a5cc-329b1ddaaa8c'
 
 # Источники, которые планировщик загружает сам. Админ включает/выключает каждый
 # (platform_settings.cron_sources: {key: bool}); нет записи - включён.
@@ -404,6 +405,19 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         conn.rollback()
         print(f'platform crm check failed: {e}')
+    # Автопродление подписок по сохранённым картам Т‑Банка (проверка «кому пора» - в самой функции).
+    try:
+        cur.execute(f'''
+            SELECT 1 FROM {SCHEMA}.subscriptions s
+            WHERE s.auto_renew = true AND s.card_id IS NOT NULL
+              AND s.current_period_end < NOW() + INTERVAL '1 day'
+              AND s.current_period_end > NOW() - INTERVAL '3 days' LIMIT 1
+        ''')
+        if cur.fetchone():
+            tasks.append((0, SUBSCRIPTION_URL, {'action': 'renew_due'}))
+    except Exception as e:
+        conn.rollback()
+        print(f'subscription renew check failed: {e}')
     for _, _, task_body in tasks:
         task_body['cron_tick'] = tick_id
     errors: Dict[int, List[str]] = {}

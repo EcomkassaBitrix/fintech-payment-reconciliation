@@ -1,0 +1,289 @@
+import json
+import time
+from typing import Any, Dict, List, Optional
+
+import downgrade
+import tbank_billing
+
+SCHEMA = 't_p83864310_fintech_payment_reco'
+FAILED_STATUSES = ('REJECTED', 'CANCELED', 'DEADLINE_EXPIRED', 'AUTH_FAIL', 'REVERSED', 'REFUNDED')
+
+
+def year_price(price: float, discount: float) -> float:
+    return round(price * 12 * (1 - discount / 100), 2)
+
+
+def load_tariffs(cur) -> List[Dict[str, Any]]:
+    cur.execute(f'''
+        SELECT id, slug, name, description, price, period_days, yearly_discount_percent,
+               modules, max_companies, max_users, max_integrations, max_automations
+        FROM {SCHEMA}.tariffs
+        WHERE is_active = true AND slug <> 'trial'
+        ORDER BY sort_order, id
+    ''')
+    result = []
+    for r in cur.fetchall():
+        price, discount = float(r[4]), float(r[6] or 0)
+        result.append({
+            'id': r[0], 'slug': r[1], 'name': r[2], 'description': r[3],
+            'price': price, 'period_days': r[5] or 30, 'yearly_discount_percent': discount,
+            'year_price': year_price(price, discount), 'modules': r[7] or [],
+            'max_companies': r[8], 'max_users': r[9], 'max_integrations': r[10], 'max_automations': r[11]
+        })
+    return result
+
+
+def period_terms(tariff: Dict[str, Any], period: str):
+    days = 365 if period == 'year' else int(tariff['period_days'])
+    amount = tariff['year_price'] if period == 'year' else tariff['price']
+    return days, amount
+
+
+def activate(cur, company_id: int, tariff_id: int, days: int):
+    '''Тот же тариф - продление от даты окончания, другой - новый срок с сегодняшнего дня.'''
+    cur.execute(f'SELECT id, tariff_id FROM {SCHEMA}.subscriptions WHERE company_id = %s', (company_id,))
+    sub = cur.fetchone()
+    if sub and sub[1] == tariff_id:
+        cur.execute(f'''
+            UPDATE {SCHEMA}.subscriptions SET
+                current_period_start = CASE WHEN COALESCE(current_period_end, NOW()) < NOW()
+                                            THEN NOW() ELSE current_period_start END,
+                current_period_end = GREATEST(COALESCE(current_period_end, NOW()), NOW())
+                                     + make_interval(days => %s),
+                status = 'active', updated_at = NOW()
+            WHERE id = %s RETURNING current_period_end
+        ''', (days, sub[0]))
+    elif sub:
+        cur.execute(f'''
+            UPDATE {SCHEMA}.subscriptions SET tariff_id = %s, status = 'active',
+                current_period_start = NOW(), current_period_end = NOW() + make_interval(days => %s),
+                updated_at = NOW()
+            WHERE id = %s RETURNING current_period_end
+        ''', (tariff_id, days, sub[0]))
+    else:
+        cur.execute(f'''
+            INSERT INTO {SCHEMA}.subscriptions
+                (company_id, tariff_id, status, current_period_start, current_period_end)
+            VALUES (%s, %s, 'active', NOW(), NOW() + make_interval(days => %s))
+            RETURNING current_period_end
+        ''', (company_id, tariff_id, days))
+    return cur.fetchone()[0]
+
+
+def _payer_contacts(cur, user_id):
+    cur.execute(f'SELECT phone, email FROM {SCHEMA}.app_users WHERE id = %s', (user_id,))
+    r = cur.fetchone()
+    return (r[0], r[1]) if r else (None, None)
+
+
+def _load_payment(cur, where: str, value) -> Optional[Dict[str, Any]]:
+    cur.execute(f'''
+        SELECT p.id, p.company_id, p.user_id, p.tariff_id, p.period, p.days, p.amount, p.status,
+               p.keep_data, p.auto_renew, p.is_recurring, p.provider_payment_id, t.name, p.period_end, p.error_message
+        FROM {SCHEMA}.subscription_payments p JOIN {SCHEMA}.tariffs t ON t.id = p.tariff_id
+        WHERE {where} FOR UPDATE OF p
+    ''', (value,))
+    r = cur.fetchone()
+    if not r:
+        return None
+    keys = ['id', 'company_id', 'user_id', 'tariff_id', 'period', 'days', 'amount', 'status', 'keep',
+            'auto_renew', 'is_recurring', 'provider_payment_id', 'tariff_name', 'period_end', 'error']
+    return dict(zip(keys, r))
+
+
+def save_card(cur, company_id: int, user_id, data: Dict[str, Any]) -> Optional[int]:
+    rebill = str(data.get('RebillId') or '').strip()
+    if not rebill:
+        return None
+    cur.execute(f'''
+        UPDATE {SCHEMA}.subscription_cards SET is_active = false, updated_at = NOW()
+        WHERE company_id = %s AND is_active = true AND rebill_id <> %s
+    ''', (company_id, rebill))
+    cur.execute(f'SELECT id FROM {SCHEMA}.subscription_cards WHERE company_id = %s AND rebill_id = %s',
+                (company_id, rebill))
+    row = cur.fetchone()
+    if row:
+        cur.execute(f'''UPDATE {SCHEMA}.subscription_cards SET is_active = true, pan = COALESCE(%s, pan),
+                        exp_date = COALESCE(%s, exp_date), updated_at = NOW() WHERE id = %s''',
+                    (data.get('Pan'), data.get('ExpDate'), row[0]))
+        return row[0]
+    cur.execute(f'''
+        INSERT INTO {SCHEMA}.subscription_cards
+            (company_id, provider_slug, rebill_id, card_id, pan, exp_date, customer_key, created_by)
+        VALUES (%s, 'tbank', %s, %s, %s, %s, %s, %s) RETURNING id
+    ''', (company_id, rebill, str(data.get('CardId') or '') or None, data.get('Pan'), data.get('ExpDate'),
+          f'company-{company_id}', user_id))
+    return cur.fetchone()[0]
+
+
+def mark_paid(cur, pay: Dict[str, Any], data: Dict[str, Any]):
+    '''Платёж подтверждён: лишнее сверх лимитов убираем, тариф активируем, карту запоминаем.'''
+    if pay['status'] == 'paid':
+        return pay['period_end']
+    tariff = next((t for t in load_tariffs(cur) if t['id'] == pay['tariff_id']), None)
+    if tariff:
+        over = downgrade.overage(cur, pay['company_id'], tariff, pay['user_id'])
+        if over:
+            removed = downgrade.apply(cur, pay['company_id'], downgrade.to_delete(over, pay['keep'] or {}))
+            print(f"downgrade company={pay['company_id']} removed={removed}")
+    period_end = activate(cur, pay['company_id'], pay['tariff_id'], pay['days'])
+    cur.execute(f'''
+        UPDATE {SCHEMA}.subscription_payments SET status = 'paid', period_end = %s, paid_at = NOW(),
+            error_message = NULL, updated_at = NOW() WHERE id = %s
+    ''', (period_end, pay['id']))
+    card_id = save_card(cur, pay['company_id'], pay['user_id'], data)
+    if card_id or pay['is_recurring']:
+        cur.execute(f'''
+            UPDATE {SCHEMA}.subscriptions SET auto_renew = CASE WHEN %s THEN %s ELSE auto_renew END,
+                renew_period = %s, card_id = COALESCE(%s, card_id), updated_at = NOW()
+            WHERE company_id = %s
+        ''', (not pay['is_recurring'], pay['auto_renew'], pay['period'], card_id, pay['company_id']))
+    print(f"subscription paid company={pay['company_id']} payment={pay['id']} until={period_end}")
+    return period_end
+
+
+def mark_failed(cur, pay: Dict[str, Any], message: str) -> None:
+    if pay['status'] == 'paid':
+        return
+    cur.execute(f'''UPDATE {SCHEMA}.subscription_payments SET status = 'failed', error_message = %s,
+                    updated_at = NOW() WHERE id = %s''', (message[:500], pay['id']))
+
+
+def apply_state(cur, pay: Dict[str, Any], data: Dict[str, Any]) -> str:
+    status = str(data.get('Status') or '')
+    if status == 'CONFIRMED':
+        mark_paid(cur, pay, data)
+        return 'paid'
+    if status in FAILED_STATUSES:
+        mark_failed(cur, pay, f"Оплата не прошла ({status}{', код ' + str(data.get('ErrorCode')) if str(data.get('ErrorCode') or '0') != '0' else ''})")
+        return 'failed'
+    return pay['status']
+
+
+def create_payment(cur, company_id, user_id, tariff, period, *, keep=None, auto_renew=False, recurring=False) -> Dict[str, Any]:
+    days, amount = period_terms(tariff, period)
+    cur.execute(f'''
+        INSERT INTO {SCHEMA}.subscription_payments
+            (company_id, user_id, tariff_id, period, days, amount, status, method, provider_slug,
+             keep_data, auto_renew, is_recurring)
+        VALUES (%s, %s, %s, %s, %s, %s, 'pending', 'tbank', 'tbank', %s, %s, %s) RETURNING id
+    ''', (company_id, user_id, tariff['id'], period, days, amount,
+          json.dumps(keep) if keep else None, auto_renew, recurring))
+    pay_id = cur.fetchone()[0]
+    order_id = f'sv{pay_id}-{int(time.time())}'
+    cur.execute(f'UPDATE {SCHEMA}.subscription_payments SET order_id = %s WHERE id = %s', (order_id, pay_id))
+    return {'id': pay_id, 'order_id': order_id, 'amount': amount, 'days': days}
+
+
+def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, auto_renew) -> Dict[str, Any]:
+    '''Первый платёж с сохранением карты: ссылка на платёжную форму Т‑Банка.'''
+    p = create_payment(cur, company_id, user_id, tariff, period, keep=keep, auto_renew=auto_renew)
+    phone, email = _payer_contacts(cur, user_id)
+    back = f"{tbank_billing.SITE_URL}/app?section=subscription&sp={p['id']}"
+    data, err = tbank_billing.init_payment(
+        terminal, order_id=p['order_id'], amount_kop=int(round(p['amount'] * 100)),
+        description=f"Подписка «{tariff['name']}» на {p['days']} дн.", customer_key=f'company-{company_id}',
+        recurrent_first=True, phone=phone, email=email, success_url=back, fail_url=back)
+    if err or not data or not data.get('PaymentURL'):
+        cur.execute(f'''UPDATE {SCHEMA}.subscription_payments SET status = 'failed', error_message = %s,
+                        updated_at = NOW() WHERE id = %s''', ((err or 'Т‑Банк не выдал ссылку на оплату')[:500], p['id']))
+        return {'success': False, 'error': err or 'Т‑Банк не выдал ссылку на оплату'}
+    cur.execute(f'''UPDATE {SCHEMA}.subscription_payments SET provider_payment_id = %s, payment_url = %s,
+                    updated_at = NOW() WHERE id = %s''', (str(data.get('PaymentId')), data['PaymentURL'], p['id']))
+    return {'success': True, 'payment_url': data['PaymentURL'], 'payment_id': p['id']}
+
+
+def handle_notification(cur, data: Dict[str, Any]) -> bool:
+    '''Уведомление Т‑Банка о статусе платежа подписки. False - подпись не сошлась.'''
+    terminal = tbank_billing.load_terminal(cur)
+    if not terminal or not tbank_billing.verify(data, terminal['password']):
+        print(f"[tbank-notify] bad token or no terminal order={data.get('OrderId')}")
+        return False
+    pay = _load_payment(cur, 'p.order_id = %s', str(data.get('OrderId') or ''))
+    if not pay:
+        print(f"[tbank-notify] unknown order {data.get('OrderId')}")
+        return True
+    if not pay['provider_payment_id'] and data.get('PaymentId'):
+        cur.execute(f'UPDATE {SCHEMA}.subscription_payments SET provider_payment_id = %s WHERE id = %s',
+                    (str(data['PaymentId']), pay['id']))
+    print(f"[tbank-notify] payment={pay['id']} status={data.get('Status')} rebill={bool(data.get('RebillId'))}")
+    apply_state(cur, pay, data)
+    return True
+
+
+def refresh(cur, company_id: int, payment_id: int) -> Optional[Dict[str, Any]]:
+    '''Возврат с платёжной формы: если уведомление ещё не пришло - спрашиваем статус у банка.'''
+    pay = _load_payment(cur, 'p.id = %s', payment_id)
+    if not pay or pay['company_id'] != int(company_id):
+        return None
+    if pay['status'] == 'pending' and pay['provider_payment_id']:
+        terminal = tbank_billing.load_terminal(cur)
+        if terminal:
+            data, _ = tbank_billing.get_state(terminal, pay['provider_payment_id'])
+            if data and data.get('Success'):
+                apply_state(cur, pay, data)
+                pay = _load_payment(cur, 'p.id = %s', payment_id)
+    return {'id': pay['id'], 'status': pay['status'], 'tariff_name': pay['tariff_name'],
+            'period_end': pay['period_end'], 'amount': float(pay['amount']), 'error': pay['error']}
+
+
+def renew_due(cur, conn, budget_seconds: float = 3.2) -> Dict[str, Any]:
+    '''
+    Автопродление: подписки с автосписанием, срок которых кончается в ближайшие сутки (или уже
+    кончился не больше 3 дней назад), списываем по сохранённой карте. Не чаще одной попытки
+    в 12 часов на компанию, чтобы не долбить карту без денег.
+    '''
+    started = time.time()
+    terminal = tbank_billing.load_terminal(cur)
+    if not terminal:
+        return {'skipped': 'terminal'}
+    cur.execute(f'''
+        SELECT s.company_id, s.tariff_id, s.renew_period, c.rebill_id,
+               (SELECT cu.user_id FROM {SCHEMA}.company_users cu JOIN {SCHEMA}.roles r ON r.id = cu.role_id
+                 WHERE cu.company_id = s.company_id AND r.slug = 'owner' AND cu.status = 'active' LIMIT 1)
+        FROM {SCHEMA}.subscriptions s
+        JOIN {SCHEMA}.subscription_cards c ON c.id = s.card_id AND c.is_active = true
+        WHERE s.auto_renew = true
+          AND s.current_period_end < NOW() + INTERVAL '1 day'
+          AND s.current_period_end > NOW() - INTERVAL '3 days'
+          AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.subscription_payments p
+                          WHERE p.company_id = s.company_id AND p.is_recurring = true
+                            AND (p.status = 'pending' OR p.created_at > NOW() - INTERVAL '12 hours'))
+        ORDER BY s.current_period_end LIMIT 5
+    ''')
+    due = cur.fetchall()
+    tariffs = {t['id']: t for t in load_tariffs(cur)}
+    done = []
+    for company_id, tariff_id, period, rebill_id, owner_id in due:
+        if time.time() - started > budget_seconds:
+            break
+        tariff = tariffs.get(tariff_id)
+        if not tariff or not owner_id:
+            continue
+        p = create_payment(cur, company_id, owner_id, tariff, period or 'month', recurring=True)
+        conn.commit()
+        phone, email = _payer_contacts(cur, owner_id)
+        data, err = tbank_billing.init_payment(
+            terminal, order_id=p['order_id'], amount_kop=int(round(p['amount'] * 100)),
+            description=f"Автопродление подписки «{tariff['name']}» на {p['days']} дн.",
+            customer_key=f'company-{company_id}', recurrent_first=False, phone=phone, email=email)
+        pay = _load_payment(cur, 'p.id = %s', p['id'])
+        if err or not data:
+            mark_failed(cur, pay, err or 'Т‑Банк не создал платёж')
+            conn.commit()
+            done.append({'company_id': company_id, 'status': 'failed'})
+            continue
+        cur.execute(f'UPDATE {SCHEMA}.subscription_payments SET provider_payment_id = %s WHERE id = %s',
+                    (str(data.get('PaymentId')), p['id']))
+        conn.commit()
+        result, err = tbank_billing.charge(terminal, str(data.get('PaymentId')), rebill_id)
+        pay = _load_payment(cur, 'p.id = %s', p['id'])
+        if err and (not result or result.get('Status') not in ('CONFIRMED',)):
+            mark_failed(cur, pay, err)
+            status = 'failed'
+        else:
+            status = apply_state(cur, pay, result or {})
+        conn.commit()
+        done.append({'company_id': company_id, 'status': status})
+    print(f'[renew_due] {done}')
+    return {'renewed': done}

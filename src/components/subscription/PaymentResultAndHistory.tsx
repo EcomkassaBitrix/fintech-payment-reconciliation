@@ -43,6 +43,8 @@ const PaymentResultAndHistory = ({ paid, payError, resultRef, payments }: Paymen
           {payments.map((p) => {
             const m = PAYMENT_METHODS[p.method || 'manual'] || { label: p.method || '—', icon: 'CreditCard' };
             const isGrant = p.method === 'platform';
+            const failed = p.status === 'failed';
+            const pending = p.status === 'pending';
             return (
               <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
                 <div>
@@ -52,11 +54,13 @@ const PaymentResultAndHistory = ({ paid, payError, resultRef, payments }: Paymen
                   </div>
                   <div className={`flex items-center gap-1 text-xs ${isGrant ? 'text-primary' : 'text-muted-foreground'}`}>
                     <Icon name={m.icon} size={12} />
-                    {m.label}
+                    {p.is_recurring ? 'Автопродление' : m.label}
+                    {failed && <span className="text-destructive">· не прошла{p.error ? `: ${p.error}` : ''}</span>}
+                    {pending && <span className="text-warning">· ожидает оплаты</span>}
                     {p.period_end && <span className="text-muted-foreground">· до {formatLongDate(p.period_end)}</span>}
                   </div>
                 </div>
-                <span className="font-medium">{isGrant ? 'Бесплатно' : money(p.amount)}</span>
+                <span className={`font-medium ${failed ? 'text-muted-foreground line-through' : ''}`}>{isGrant ? 'Бесплатно' : money(p.amount)}</span>
               </div>
             );
           })}

@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import psycopg2
 from auth_guard import guard, is_platform_admin
+import tbank_terminal
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 PROVIDER_SLUG = 'yookassa'
@@ -75,9 +76,12 @@ def shop_info(token: str) -> Tuple[Optional[Dict[str, Any]], Optional[int]]:
 
 def _provider_row(cur, slug: str):
     cur.execute(f'''
-        SELECT slug, name, description, auth_type, is_enabled, shop_id, is_test, token_expires_at, connected_at,
-               access_token IS NOT NULL AND (token_expires_at IS NULL OR token_expires_at > NOW()),
-               (SELECT COALESCE(NULLIF(full_name, ''), phone) FROM {SCHEMA}.app_users WHERE id = connected_by)
+        SELECT slug, name, description, auth_type, is_enabled, COALESCE(terminal_key, shop_id), is_test,
+               token_expires_at, connected_at,
+               (access_token IS NOT NULL AND (token_expires_at IS NULL OR token_expires_at > NOW()))
+               OR (terminal_key IS NOT NULL AND terminal_password IS NOT NULL),
+               (SELECT COALESCE(NULLIF(full_name, ''), phone) FROM {SCHEMA}.app_users WHERE id = connected_by),
+               config
         FROM {SCHEMA}.platform_payment_providers WHERE slug = %s
     ''', (slug,))
     return cur.fetchone()
@@ -88,7 +92,8 @@ def _provider_json(r) -> Dict[str, Any]:
         'slug': r[0], 'name': r[1], 'description': r[2], 'auth_type': r[3], 'is_enabled': r[4],
         'shop_id': r[5], 'is_test': r[6], 'token_expires_at': r[7], 'connected_at': r[8],
         'connected': bool(r[9]), 'connected_by': r[10],
-        'configured': is_configured() if r[0] == PROVIDER_SLUG else False,
+        'configured': is_configured() if r[0] == PROVIDER_SLUG else True,
+        'config': r[11] or {},
     }
 
 
@@ -101,6 +106,9 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     POST {code}                              -> обмен кода на токен, сохранение
     POST {action: "toggle", slug, enabled}   -> включить/выключить провайдера
     POST {action: "disconnect", slug}        -> отключить магазин
+    POST {action: "save_terminal", terminal_key, terminal_password, receipt_enabled, taxation, vat}
+                                             -> терминал Т‑Банка (проверяется запросом в банк)
+    GET  ?action=check&slug=tbank            -> проверить терминал Т‑Банка
     '''
     denied = guard(event, check_company=False)
     if denied:
@@ -129,6 +137,8 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     'state': 'platform',
                 })
                 return _resp(200, {'success': True, 'authorize_url': f'{AUTHORIZE_URL}?{query}'})
+            if action == 'check' and params.get('slug') == 'tbank':
+                return _resp(200, tbank_terminal.check(cur))
             if action == 'check':
                 cur.execute(f'SELECT access_token FROM {SCHEMA}.platform_payment_providers WHERE slug = %s', (PROVIDER_SLUG,))
                 row = cur.fetchone()
@@ -143,6 +153,12 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         if method == 'POST':
             body = json.loads(event.get('body') or '{}')
             action = body.get('action')
+            if action == 'save_terminal':
+                err = tbank_terminal.save(cur, body, user_id)
+                if err:
+                    return _resp(200, {'success': False, 'error': err})
+                conn.commit()
+                return _resp(200, {'success': True, 'provider': _provider_json(_provider_row(cur, 'tbank'))})
             if action == 'toggle':
                 cur.execute(f'''
                     UPDATE {SCHEMA}.platform_payment_providers SET is_enabled = %s, updated_at = NOW()
@@ -155,6 +171,7 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             if action == 'disconnect':
                 cur.execute(f'''
                     UPDATE {SCHEMA}.platform_payment_providers SET access_token = NULL, shop_id = NULL,
+                        terminal_key = NULL, terminal_password = NULL,
                         token_expires_at = NULL, is_enabled = false, updated_at = NOW()
                     WHERE slug = %s
                 ''', (body.get('slug'),))

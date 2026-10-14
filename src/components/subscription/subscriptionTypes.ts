@@ -21,12 +21,21 @@ export interface Payment {
   period_end: string | null;
   created_at: string;
   method?: string;
+  status?: string;
+  is_recurring?: boolean;
+  error?: string | null;
+}
+
+export interface AutoPay {
+  auto_renew: boolean;
+  period: string;
+  card: { pan: string; exp_date: string | null } | null;
 }
 
 export const PAYMENT_METHODS: Record<string, { label: string; icon: string }> = {
   platform: { label: 'Начислено платформой', icon: 'Gift' },
   manual: { label: 'Оплата без платёжной системы', icon: 'CreditCard' },
-  tbank: { label: 'Т-Банк', icon: 'CreditCard' },
+  tbank: { label: 'Картой через Т‑Банк', icon: 'CreditCard' },
   tochka: { label: 'Точка', icon: 'CreditCard' }
 };
 

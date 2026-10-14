@@ -21,6 +21,9 @@ interface CheckoutPanelProps {
   onPay: () => void;
   onKeepChange: (keep: KeepState) => void;
   onConfirmDeleteChange: (v: boolean) => void;
+  online?: boolean;
+  autoRenew?: boolean;
+  onAutoRenewChange?: (v: boolean) => void;
 }
 
 const CheckoutPanel = ({
@@ -39,7 +42,10 @@ const CheckoutPanel = ({
   onCancel,
   onPay,
   onKeepChange,
-  onConfirmDeleteChange
+  onConfirmDeleteChange,
+  online,
+  autoRenew,
+  onAutoRenewChange
 }: CheckoutPanelProps) => (
   <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -70,6 +76,19 @@ const CheckoutPanel = ({
         </Button>
       </div>
     </div>
+
+    {online && (
+      <div className="mt-3 space-y-2 text-sm">
+        <label className="flex cursor-pointer items-center gap-2">
+          <Checkbox checked={autoRenew} onCheckedChange={(v) => onAutoRenewChange?.(Boolean(v))} />
+          <span>Продлевать автоматически — списывать с этой карты в конце каждого периода</span>
+        </label>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Icon name="ShieldCheck" size={14} />
+          Оплата на защищённой странице Т‑Банка. Карта сохраняется в банке, у нас — только последние цифры.
+        </div>
+      </div>
+    )}
 
     {checking && (
       <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
