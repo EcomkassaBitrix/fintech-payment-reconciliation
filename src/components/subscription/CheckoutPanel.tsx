@@ -24,6 +24,8 @@ interface CheckoutPanelProps {
   online?: boolean;
   autoRenew?: boolean;
   onAutoRenewChange?: (v: boolean) => void;
+  recurringConsent?: boolean;
+  onRecurringConsentChange?: (v: boolean) => void;
 }
 
 const CheckoutPanel = ({
@@ -45,7 +47,9 @@ const CheckoutPanel = ({
   onConfirmDeleteChange,
   online,
   autoRenew,
-  onAutoRenewChange
+  onAutoRenewChange,
+  recurringConsent,
+  onRecurringConsentChange
 }: CheckoutPanelProps) => (
   <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -64,7 +68,7 @@ const CheckoutPanel = ({
         </Button>
         <Button
           onClick={onPay}
-          disabled={paying || payBlocked || !online}
+          disabled={paying || payBlocked || !online || !recurringConsent}
           variant={removing > 0 ? 'destructive' : 'default'}
         >
           <Icon
@@ -86,6 +90,20 @@ const CheckoutPanel = ({
 
     {online && (
       <div className="mt-3 space-y-2 text-sm">
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-card p-3">
+          <Checkbox
+            checked={recurringConsent}
+            onCheckedChange={(v) => onRecurringConsentChange?.(Boolean(v))}
+            className="mt-0.5"
+          />
+          <span>
+            Я соглашаюсь на регулярные списания
+            <span className="block text-xs text-muted-foreground">
+              Карта привязывается к подписке: с неё списывается оплата тарифа и, если включено автопродление, оплата
+              следующих периодов. Отключить автопродление и отвязать карту можно в любой момент на этой странице.
+            </span>
+          </span>
+        </label>
         <label className="flex cursor-pointer items-center gap-2">
           <Checkbox checked={autoRenew} onCheckedChange={(v) => onAutoRenewChange?.(Boolean(v))} />
           <span>Продлевать автоматически — списывать с этой карты в конце каждого периода</span>
@@ -100,6 +118,10 @@ const CheckoutPanel = ({
           </span>
         </div>
       </div>
+    )}
+
+    {online && !recurringConsent && (
+      <div className="mt-2 text-xs text-muted-foreground">Чтобы оплатить, отметьте согласие на регулярные списания.</div>
     )}
 
     {checking && (

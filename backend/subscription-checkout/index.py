@@ -280,9 +280,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     return respond(400, {'error': problem, 'overage': over})
 
             if terminal:
+                if body.get('recurring_consent') is not True:
+                    return respond(400, {'error': 'Подтвердите согласие на регулярные списания с карты'})
                 result = billing.start_checkout(cur, terminal, int(company_id), user_id, tariff, period,
                                                 keep if over else None, body.get('auto_renew', True) is not False,
                                                 origin=_origin(event))
+                if result.get('payment_id'):
+                    cur.execute(f'''UPDATE {SCHEMA}.subscription_payments SET recurring_consent_at = NOW()
+                                    WHERE id = %s''', (result['payment_id'],))
                 conn.commit()
                 return respond(200, result)
 
