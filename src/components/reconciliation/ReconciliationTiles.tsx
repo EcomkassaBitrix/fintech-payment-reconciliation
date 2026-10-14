@@ -163,7 +163,7 @@ const ReconciliationTiles = ({ totals, onTileClick, lockedTiles = {}, onConnectI
             {formatMoney(totals.bank.amount)}
           </div>
           <p className={`text-xs mt-1 ${bankVsReceipts.color}`}>
-            {bankVsReceipts.text}, комиссия {formatMoney(totals.bank.commission_amount)}
+            {bankVsReceipts.text}
           </p>
         </CardContent>
         {lockOverlay('money')}
