@@ -51,7 +51,12 @@ def payment_kind_label(provider_slug: Optional[str], payment_provider: Optional[
     name = integration_name or 'Платёжная интеграция'
     if provider_slug in ('ecomkassa_gateway', 'ecomkassa') and payment_provider:
         code = str(payment_provider).strip()
-        return kind_names.get(code.upper(), code)
+        label = kind_names.get(code.upper(), code)
+        # «Платёж через счёт "Тинькофф СБП"» -> «Тинькофф СБП».
+        prefix = 'платёж через счёт'
+        if label.lower().replace('ё', 'е').startswith(prefix.replace('ё', 'е')):
+            label = label[len(prefix):].strip().strip('"«»').strip() or label
+        return label
     return name
 
 
