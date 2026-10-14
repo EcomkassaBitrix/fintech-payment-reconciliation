@@ -166,7 +166,11 @@ const AdminSettingsSection = () => {
     );
   }
 
-  const hasChanges = (managingId || '') !== (settings.managing_company_id ? String(settings.managing_company_id) : '')
+  const companyChanges = (managingId || '') !== (settings.managing_company_id ? String(settings.managing_company_id) : '')
+    || contactEmail.trim() !== (settings.contact_email || '')
+    || contactPhone.trim() !== (settings.contact_phone || '')
+    || contactAddress.trim() !== (settings.contact_address || '');
+  const hasChanges = companyChanges
     || cronEnabled !== settings.cron_enabled
     || metrikaId !== (settings.metrika_counter_id || '')
     || sources.some((s) => sourceValues[s.key] !== s.enabled || sourceIntervals[s.key] !== s.interval);
@@ -241,8 +245,12 @@ const AdminSettingsSection = () => {
           </div>
           <p className="text-xs text-muted-foreground">
             Показываются в подвале сайта и подставляются в договор и политику. Пустое поле — берутся почта и телефон
-            владельца и юридический адрес управляющей компании (подсказка в поле). Сохраняется общей кнопкой внизу.
+            владельца и юридический адрес управляющей компании (подсказка в поле).
           </p>
+          <Button onClick={save} disabled={!companyChanges || isSaving} className="gap-2">
+            <Icon name={isSaving ? 'Loader2' : 'Save'} size={16} className={isSaving ? 'animate-spin' : ''} />
+            Сохранить
+          </Button>
         </CardContent>
       </Card>
 
