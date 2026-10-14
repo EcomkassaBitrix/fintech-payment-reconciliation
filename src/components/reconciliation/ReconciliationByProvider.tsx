@@ -11,6 +11,7 @@ const plural = (n: number) => {
 interface ProviderStats {
   amount: number;
   count: number;
+  commission?: number;
 }
 
 interface ReconciliationByProviderProps {
@@ -25,6 +26,20 @@ const ReconciliationByProvider = ({ paymentsByProvider }: ReconciliationByProvid
 
   if (providers.length === 0) return null;
 
+  const total = providers.reduce(
+    (acc, [, st]) => ({
+      amount: acc.amount + st.amount,
+      count: acc.count + st.count,
+      commission: acc.commission + (st.commission || 0)
+    }),
+    { amount: 0, count: 0, commission: 0 }
+  );
+  const commissionCell = (value: number) => (
+    <span className={value > 0 ? 'text-warning' : 'text-muted-foreground'}>
+      {value > 0 ? `−${formatMoney(value)}` : '—'}
+    </span>
+  );
+
   return (
     <Card>
       <CardHeader>
@@ -37,16 +52,30 @@ const ReconciliationByProvider = ({ paymentsByProvider }: ReconciliationByProvid
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
+        <div className="flex items-center gap-4 pb-2 border-b border-border text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1">Вид оплаты</span>
+          <span className="w-28 shrink-0 text-right">Платежи</span>
+          <span className="w-24 shrink-0 text-right">Комиссия</span>
+        </div>
+        <div>
           {providers.map(([provider, stats]) => (
-            <div key={provider} className="flex items-center justify-between gap-4 py-3 border-b border-border last:border-0">
+            <div key={provider} className="flex items-center gap-4 py-3 border-b border-border">
               <span className="min-w-0 flex-1 text-sm text-foreground break-words">{provider}</span>
-              <div className="shrink-0 text-right">
+              <div className="w-28 shrink-0 text-right">
                 <div className="text-sm font-medium text-foreground whitespace-nowrap">{formatMoney(stats.amount)}</div>
                 <div className="text-xs text-muted-foreground whitespace-nowrap">{stats.count} {plural(stats.count)}</div>
               </div>
+              <div className="w-24 shrink-0 text-right text-sm whitespace-nowrap">{commissionCell(stats.commission || 0)}</div>
             </div>
           ))}
+          <div className="flex items-center gap-4 pt-3">
+            <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">Итого</span>
+            <div className="w-28 shrink-0 text-right">
+              <div className="text-sm font-semibold text-foreground whitespace-nowrap">{formatMoney(total.amount)}</div>
+              <div className="text-xs text-muted-foreground whitespace-nowrap">{total.count} {plural(total.count)}</div>
+            </div>
+            <div className="w-24 shrink-0 text-right text-sm font-semibold whitespace-nowrap">{commissionCell(total.commission)}</div>
+          </div>
         </div>
       </CardContent>
     </Card>

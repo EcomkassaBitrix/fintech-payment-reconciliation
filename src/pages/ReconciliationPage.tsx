@@ -31,7 +31,7 @@ interface ReconciliationResponse {
   daily: DailyPoint[];
   details: {
     bank_commission_note: string | null;
-    payments_by_provider?: Record<string, { amount: number; count: number }>;
+    payments_by_provider?: Record<string, { amount: number; count: number; commission?: number }>;
   };
 }
 

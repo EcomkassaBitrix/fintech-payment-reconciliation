@@ -217,6 +217,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         cur.execute(f'''
             WITH rows AS (
                 SELECT wp.*, ui.integration_name, p.slug AS provider_slug, er.doc_datetime AS receipt_dt,
+                       substring(wp.raw_data->'invoice_payload'->>'link' FROM '/([A-Za-z0-9]+)(?:\\?|$)') AS qr_code,
+                       wp.raw_data->>'external_id' AS ext_id,
+                       CASE WHEN (wp.raw_data->'payment'->'income_amount'->>'value') ~ '^[0-9.]+$'
+                            THEN (wp.raw_data->'payment'->'income_amount'->>'value')::numeric END AS income_amount,
                        CASE WHEN wp.status IN ('REFUNDED', 'CANCELED') AND EXISTS (
                                 SELECT 1 FROM {SCHEMA}.webhook_payments s
                                 WHERE s.integration_id = wp.integration_id AND s.payment_id = wp.payment_id
@@ -241,15 +245,37 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     (array_agg(payment_provider ORDER BY created_at DESC))[1] AS payment_provider,
                     MAX(integration_name) AS integration_name,
                     MAX(provider_slug) AS provider_slug,
-                    (array_agg(status ORDER BY created_at DESC))[1] AS refund_status
+                    (array_agg(status ORDER BY created_at DESC))[1] AS refund_status,
+                    MAX(qr_code) AS qr_code,
+                    MAX(ext_id) AS ext_id,
+                    MIN(income_amount) AS income_amount
                 FROM rows
                 GROUP BY integration_id, payment_id, op
             )
             SELECT payment_date, CASE WHEN latest_status = 'REFUND_OP' THEN refund_status ELSE latest_status END,
-                   amount, payment_provider, integration_name, provider_slug, latest_status = 'REFUND_OP'
+                   amount, payment_provider, integration_name, provider_slug, latest_status = 'REFUND_OP',
+                   CASE WHEN latest_status = 'REFUND_OP' THEN 0 ELSE
+                     COALESCE(GREATEST(amount - income_amount, 0), 0)
+                     + COALESCE((
+                         SELECT SUM(b.amount) FROM {SCHEMA}.bank_statement_transactions b
+                         WHERE b.company_id = %s AND b.removed_at IS NULL AND b.direction = 'out'
+                           AND latest.qr_code IS NOT NULL
+                           AND (b.purpose ILIKE 'Комиссия%%QR ID%%' OR b.purpose ILIKE 'Комиссия%%СБП%%')
+                           AND substring(b.purpose FROM 'QR\\s*(?:коду\\s+)?ID\\s+([A-Za-z0-9]+)') = latest.qr_code
+                       ), 0)
+                     + COALESCE((
+                         SELECT SUM(COALESCE(NULLIF(b.commission_amount, 0),
+                                    REPLACE(substring(b.purpose FROM 'сумма комиссии\\s+([\\d.,]+)\\s*руб'), ',', '.')::numeric, 0))
+                         FROM {SCHEMA}.bank_statement_transactions b
+                         WHERE b.company_id = %s AND b.removed_at IS NULL AND b.direction = 'in'
+                           AND b.parent_transaction_id IS NULL
+                           AND ((latest.qr_code IS NOT NULL AND substring(b.purpose FROM 'QR\\s*(?:коду\\s+)?ID\\s+([A-Za-z0-9]+)') = latest.qr_code)
+                             OR (latest.ext_id IS NOT NULL AND substring(b.purpose FROM 'Платеж\\s+(\\S+)') = latest.ext_id))
+                       ), 0)
+                   END AS commission
             FROM latest
             WHERE payment_date BETWEEN %s AND %s
-        ''', (company_id, company_tz, date_from, date_to))
+        ''', (company_id, company_tz, company_id, company_id, date_from, date_to))
 
         payments_rows = cur.fetchall()
         cur.execute(f'''
@@ -265,7 +291,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # только по успешным платежам, у одной кассы их может быть больше 10.
         payments_by_provider: Dict[str, Dict[str, float]] = {}
 
-        for payment_date, latest_status, amount, payment_provider, integration_name, provider_slug, is_refund in payments_rows:
+        for payment_date, latest_status, amount, payment_provider, integration_name, provider_slug, is_refund, commission in payments_rows:
             payments_by_status[latest_status] = payments_by_status.get(latest_status, 0) + 1
             # Количество - по числу документов вне зависимости от статуса
             # (возврат тоже был платежом и должен быть виден в счётчике).
@@ -287,8 +313,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if latest_status in ('AUTHORIZED', 'CONFIRMED') and not is_refund:
                 provider_key = payment_kind_label(provider_slug, payment_provider, integration_name, kind_names)
                 if provider_key not in payments_by_provider:
-                    payments_by_provider[provider_key] = {'amount': 0.0, 'count': 0}
+                    payments_by_provider[provider_key] = {'amount': 0.0, 'count': 0, 'commission': 0.0}
                 payments_by_provider[provider_key]['amount'] += amount_f
+                payments_by_provider[provider_key]['commission'] += float(commission or 0)
                 payments_by_provider[provider_key]['count'] += 1
 
         # 2. Чеки кассы (ecomkassa_receipts) и чеки ОФД (ofd_receipts) - ДВА
@@ -502,7 +529,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             cursor_date += timedelta(days=1)
 
         payments_by_provider_rounded = {
-            provider: {'amount': round(data['amount'], 2), 'count': data['count']}
+            provider: {'amount': round(data['amount'], 2), 'count': data['count'], 'commission': round(data['commission'], 2)}
             for provider, data in payments_by_provider.items()
         }
 
