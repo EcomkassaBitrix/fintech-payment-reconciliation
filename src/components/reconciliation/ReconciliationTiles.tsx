@@ -22,7 +22,14 @@ interface ReconciliationTilesProps {
   totals: ReconciliationTotals;
   onTileClick?: (typeKey: TypeFilterKey) => void;
   lockedTiles?: Partial<Record<TypeFilterKey, boolean>>;
+  onConnectIntegration?: (categorySlug: string) => void;
 }
+
+const TILE_CATEGORY: Record<TypeFilterKey, string> = {
+  payments: 'payments',
+  receipts: 'cash_registers',
+  money: 'banks'
+} as Record<TypeFilterKey, string>;
 
 const formatMoney = (value: number) =>
   value.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 });
@@ -39,8 +46,12 @@ const bankVsReceiptsLabel = (bankAmount: number, receiptsAmount: number) => {
   return { text: `разница ${sign}${formatMoney(Math.abs(diff))}`, color: 'text-warning' };
 };
 
-const ReconciliationTiles = ({ totals, onTileClick, lockedTiles = {} }: ReconciliationTilesProps) => {
-  const [lockOpen, setLockOpen] = useState(false);
+const ReconciliationTiles = ({ totals, onTileClick, lockedTiles = {}, onConnectIntegration }: ReconciliationTilesProps) => {
+  const [lockedKey, setLockedKey] = useState<TypeFilterKey | null>(null);
+  const lockOpen = lockedKey !== null;
+  const setLockOpen = (open: boolean) => {
+    if (!open) setLockedKey(null);
+  };
   // Чеки кассы vs чеки ОФД сравниваются по КОЛИЧЕСТВУ документов - это два
   // разных источника одного и того же чека (касса пробивает сама, ОФД
   // получает копию от налоговой), поэтому расхождение в штуках красноречивее
@@ -56,11 +67,11 @@ const ReconciliationTiles = ({ totals, onTileClick, lockedTiles = {} }: Reconcil
           role: 'button' as const,
           tabIndex: 0,
           title: 'Данные не загружаются',
-          onClick: () => setLockOpen(true),
+          onClick: () => setLockedKey(typeKey),
           onKeyDown: (e: React.KeyboardEvent) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              setLockOpen(true);
+              setLockedKey(typeKey);
             }
           }
         }
@@ -170,7 +181,20 @@ const ReconciliationTiles = ({ totals, onTileClick, lockedTiles = {} }: Reconcil
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:justify-center">
-            <Button onClick={() => setLockOpen(false)}>Понятно</Button>
+            {onConnectIntegration && lockedKey ? (
+              <Button
+                onClick={() => {
+                  const slug = TILE_CATEGORY[lockedKey];
+                  setLockedKey(null);
+                  onConnectIntegration(slug);
+                }}
+              >
+                <Icon name="Plug" size={16} className="mr-2" />
+                Подключить интеграцию
+              </Button>
+            ) : (
+              <Button onClick={() => setLockOpen(false)}>Понятно</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -57,9 +57,10 @@ const getDefaultFrom = () => {
 
 interface ReconciliationPageProps {
   onOpenTransactions?: (from: Date, to: Date, typeKey?: TypeFilterKey, unmatchedOnly?: boolean) => void;
+  onConnectIntegration?: (categorySlug: string) => void;
 }
 
-const ReconciliationPage = ({ onOpenTransactions }: ReconciliationPageProps) => {
+const ReconciliationPage = ({ onOpenTransactions, onConnectIntegration }: ReconciliationPageProps) => {
   const [dateFrom, setDateFrom] = useState<Date>(getDefaultFrom());
   const [dateTo, setDateTo] = useState<Date>(getYesterday());
   const [data, setData] = useState<ReconciliationResponse | null>(null);
@@ -206,6 +207,7 @@ const ReconciliationPage = ({ onOpenTransactions }: ReconciliationPageProps) => 
         <>
           <ReconciliationTiles
             totals={data.totals}
+            onConnectIntegration={onConnectIntegration}
             lockedTiles={{
               payments: tileLocked('payments', data.totals.payments.count),
               receipts: tileLocked('cash_registers', data.totals.receipts.count),

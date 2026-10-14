@@ -9,9 +9,11 @@ import { TochkaOAuthDraft, takeTochkaDraft } from '@/components/integrations/toc
 
 interface IntegrationsPageProps {
   onSetupReceipts?: (integrationId: number) => void;
+  openCategorySlug?: string | null;
+  onCategoryOpened?: () => void;
 }
 
-const IntegrationsPage = ({ onSetupReceipts }: IntegrationsPageProps) => {
+const IntegrationsPage = ({ onSetupReceipts, openCategorySlug, onCategoryOpened }: IntegrationsPageProps) => {
   const {
     categories,
     userIntegrations,
@@ -41,6 +43,15 @@ const IntegrationsPage = ({ onSetupReceipts }: IntegrationsPageProps) => {
     getCategoryIntegrations
   } = useIntegrationsPageData();
   const [restoredDraft, setRestoredDraft] = useState<TochkaOAuthDraft | null>(null);
+  const [startCategorySlug, setStartCategorySlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isLoading || !openCategorySlug || categories.length === 0) return;
+    setStartCategorySlug(openCategorySlug);
+    handleAddNew();
+    onCategoryOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, openCategorySlug, categories.length]);
 
   // Вернулись из Точки после подтверждения доступа - открываем ту же форму, чтобы сразу выбрать счёт.
   useEffect(() => {
@@ -106,10 +117,13 @@ const IntegrationsPage = ({ onSetupReceipts }: IntegrationsPageProps) => {
         open={showAddDialog}
         onOpenChange={(o) => {
           setShowAddDialog(o);
-          if (!o) setRestoredDraft(null);
+          if (!o) {
+            setRestoredDraft(null);
+            setStartCategorySlug(null);
+          }
         }}
         categories={categories}
-        initialCategory={null}
+        initialCategory={startCategorySlug ? categories.find((c) => c.slug === startCategorySlug) || null : null}
         editingIntegration={editingIntegration}
         allProviders={allProviders}
         connectedProviderIds={userIntegrations.map(ui => ui.provider_id)}

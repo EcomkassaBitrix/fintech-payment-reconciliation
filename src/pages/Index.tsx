@@ -40,6 +40,8 @@ const Index = () => {
   const [transactionsNavKey, setTransactionsNavKey] = useState(0);
   // Платёжка, для которой сразу открыть новый сценарий чеков в «Автоматизации».
   const [receiptSourceId, setReceiptSourceId] = useState<number | null>(null);
+  // Раздел интеграций, который сразу открыть в окне подключения (переход из «Сверки»).
+  const [integrationCategory, setIntegrationCategory] = useState<string | null>(null);
 
   // Переход из «Сверки» (плитки, столбцы графика) в «Транзакции» сразу с
   // фильтром на нужный период.
@@ -132,7 +134,17 @@ const Index = () => {
           />}
         {shownModule && !lockedModule && banners.forPage(shownModule).map((b) => <PageBanner key={b.page} banner={b} />)}
         {!lockedModule && shownModule === 'reconciliation' && (
-          <ReconciliationPage onOpenTransactions={canOpenTransactions ? openTransactionsForPeriod : undefined} />
+          <ReconciliationPage
+            onOpenTransactions={canOpenTransactions ? openTransactionsForPeriod : undefined}
+            onConnectIntegration={
+              canOpen('integrations')
+                ? (slug) => {
+                    handleModuleChange('integrations');
+                    setIntegrationCategory(slug);
+                  }
+                : undefined
+            }
+          />
         )}
         {!lockedModule && shownModule === 'events' && <EventsPage />}
         {!lockedModule && shownModule === 'transactions' && <TransactionsPage key={transactionsNavKey} initialDateFilter={transactionsDateFilter} initialTypeFilter={transactionsTypeFilter} initialUnmatchedOnly={transactionsUnmatchedOnly} />}
@@ -141,6 +153,8 @@ const Index = () => {
         )}
         {!lockedModule && shownModule === 'integrations' && (
           <IntegrationsPage
+            openCategorySlug={integrationCategory}
+            onCategoryOpened={() => setIntegrationCategory(null)}
             onSetupReceipts={
               canOpen('automation')
                 ? (id) => {
