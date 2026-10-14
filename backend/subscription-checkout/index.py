@@ -30,6 +30,11 @@ def member_role(cur, company_id, user_id):
     return row[0] if row else None
 
 
+def _origin(event: Dict[str, Any]) -> str:
+    headers = {k.lower(): v for k, v in (event.get('headers') or {}).items()}
+    return headers.get('origin') or ''
+
+
 def autopay_view(cur, company_id) -> Dict[str, Any]:
     cur.execute(f'''
         SELECT s.auto_renew, s.renew_period, c.pan, c.exp_date, c.provider_slug
@@ -72,6 +77,15 @@ def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
                 cur.execute(f'SELECT company_id FROM {SCHEMA}.subscription_payments WHERE id = %s', (body.get('payment_id'),))
                 payment = billing.refresh(cur, cur.fetchone()[0], int(body['payment_id']))
             return respond(200, {**result, 'payment': payment})
+        if action == 'test_last':
+            cur.execute(f'''SELECT id, company_id FROM {SCHEMA}.subscription_payments
+                            WHERE is_test = true AND provider_slug = 'tbank' ORDER BY id DESC LIMIT 1''')
+            row = cur.fetchone()
+            if not row:
+                return respond(200, {'success': True, 'payment': None})
+            result = billing.refresh(cur, row[1], row[0])
+            conn.commit()
+            return respond(200, {'success': True, 'payment': result})
         if action == 'test_status':
             cur.execute(f'SELECT company_id FROM {SCHEMA}.subscription_payments WHERE id = %s', (body.get('payment_id'),))
             row = cur.fetchone()
@@ -92,7 +106,7 @@ def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
             period = 'year' if body.get('period') == 'year' else 'month'
             sale = body.get('scenario') == 'sale'
             result = billing.start_checkout(cur, terminal, company_id, user_id, tariff, period, None, not sale,
-                                            is_test=True, save_card=not sale)
+                                            is_test=True, save_card=not sale, origin=_origin(event))
             conn.commit()
             return respond(200, result)
         cur.execute(f'''
@@ -143,7 +157,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': 'OK' if ok else 'BAD TOKEN', 'isBase64Encoded': False}
 
     raw_body = json.loads(event.get('body') or '{}') if event.get('httpMethod') == 'POST' else {}
-    if raw_body.get('action') in ('test_checkout', 'test_charge', 'test_status', 'test_cancel'):
+    if raw_body.get('action') in ('test_checkout', 'test_charge', 'test_status', 'test_cancel', 'test_last'):
         denied = guard(event, check_company=False)
         if denied:
             return denied
@@ -267,7 +281,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             if terminal:
                 result = billing.start_checkout(cur, terminal, int(company_id), user_id, tariff, period,
-                                                keep if over else None, body.get('auto_renew', True) is not False)
+                                                keep if over else None, body.get('auto_renew', True) is not False,
+                                                origin=_origin(event))
                 conn.commit()
                 return respond(200, result)
 

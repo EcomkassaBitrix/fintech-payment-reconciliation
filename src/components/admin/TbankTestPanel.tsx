@@ -116,7 +116,12 @@ const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tp = params.get('tp');
-    if (!tp) return;
+    if (!tp) {
+      call({ action: 'test_last' })
+        .then((d) => d.payment && setLast(d.payment))
+        .catch(() => undefined);
+      return;
+    }
     params.delete('tp');
     window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
     setResult({ kind: 'checking' });

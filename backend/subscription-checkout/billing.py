@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -238,13 +239,23 @@ def create_payment(cur, company_id, user_id, tariff, period, *, keep=None, auto_
     return {'id': pay_id, 'order_id': order_id, 'amount': amount, 'days': days}
 
 
+ALLOWED_RETURN = re.compile(r'^https://([a-z0-9-]+\.)*(s-verka\.ru|poehali\.dev|poehali\.app|preview\.poehali\.dev)(:\d+)?$')
+
+
+def return_base(origin: Optional[str]) -> str:
+    '''Адрес возврата с платёжной формы - сайт, с которого начали оплату (редактор, превью или боевой).'''
+    origin = (origin or '').strip().rstrip('/')
+    return origin if origin and ALLOWED_RETURN.match(origin) else tbank_billing.SITE_URL
+
+
 def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, auto_renew, is_test=False,
-                   save_card: bool = True) -> Dict[str, Any]:
+                   save_card: bool = True, origin: Optional[str] = None) -> Dict[str, Any]:
     '''Первый платёж с сохранением карты: ссылка на платёжную форму Т‑Банка.'''
     p = create_payment(cur, company_id, user_id, tariff, period, keep=keep, auto_renew=auto_renew, is_test=is_test)
     phone, email = _payer_contacts(cur, user_id)
-    back = (f"{tbank_billing.SITE_URL}/admin?section=payments&tp={p['id']}" if is_test
-            else f"{tbank_billing.SITE_URL}/app?section=subscription&sp={p['id']}")
+    base = return_base(origin)
+    back = (f"{base}/admin?section=payments&tp={p['id']}" if is_test
+            else f"{base}/app?section=subscription&sp={p['id']}")
     data, err = tbank_billing.init_payment(
         terminal, order_id=p['order_id'], amount_kop=int(round(p['amount'] * 100)),
         description=f"Подписка «{tariff['name']}» на {p['days']} дн.", customer_key=f'company-{company_id}',
