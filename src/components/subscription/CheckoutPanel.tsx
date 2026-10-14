@@ -99,24 +99,25 @@ const CheckoutPanel = ({
           <span>
             Я соглашаюсь на регулярные списания
             <span className="block text-xs text-muted-foreground">
-              Карта привязывается к подписке: с неё списывается оплата тарифа и, если включено автопродление, оплата
-              следующих периодов. Отключить автопродление и отвязать карту можно в любой момент на этой странице.
+              Продлевать автоматически — списывать с этой карты в конце каждого периода
+            </span>
+            <span className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Icon name="ShieldCheck" size={14} className="mt-px shrink-0" />
+              <span>
+                Оплата на защищённой странице Т‑Банка. Карта сохраняется в банке, у нас — только последние цифры.{' '}
+                <a
+                  href="/payment"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Условия оплаты и возврата
+                </a>
+              </span>
             </span>
           </span>
         </label>
-        <label className="flex cursor-pointer items-center gap-2">
-          <Checkbox checked={autoRenew} onCheckedChange={(v) => onAutoRenewChange?.(Boolean(v))} />
-          <span>Продлевать автоматически — списывать с этой карты в конце каждого периода</span>
-        </label>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Icon name="ShieldCheck" size={14} />
-          <span>
-            Оплата на защищённой странице Т‑Банка. Карта сохраняется в банке, у нас — только последние цифры.{' '}
-            <a href="/payment" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-              Условия оплаты и возврата
-            </a>
-          </span>
-        </div>
       </div>
     )}
 

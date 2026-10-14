@@ -44,7 +44,6 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [provider, setProvider] = useState<string | null>(null);
   const [autopay, setAutopay] = useState<AutoPay | null>(null);
-  const [autoRenew, setAutoRenew] = useState(true);
   const [recurringConsent, setRecurringConsent] = useState(false);
   const [autopayBusy, setAutopayBusy] = useState(false);
   const [result, setResult] = useState<PaymentResultState | null>(null);
@@ -210,7 +209,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
           tariff_slug: chosen.slug,
           period,
           keep: overage ? keep : undefined,
-          auto_renew: autoRenew,
+          auto_renew: recurringConsent,
           recurring_consent: recurringConsent
         })
       });
@@ -310,8 +309,6 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
                 onKeepChange={setKeep}
                 onConfirmDeleteChange={setConfirmDelete}
                 online={provider === 'tbank'}
-                autoRenew={autoRenew}
-                onAutoRenewChange={setAutoRenew}
                 recurringConsent={recurringConsent}
                 onRecurringConsentChange={setRecurringConsent}
               />
