@@ -272,10 +272,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                            AND ((latest.qr_code IS NOT NULL AND substring(b.purpose FROM 'QR\\s*(?:коду\\s+)?ID\\s+([A-Za-z0-9]+)') = latest.qr_code)
                              OR (latest.ext_id IS NOT NULL AND substring(b.purpose FROM 'Платеж\\s+(\\S+)') = latest.ext_id))
                        ), 0)
+                     -- «Долями» перечисляет деньги реестром за день без номера платежа
+                     -- в назначении: берём долю удержанного вознаграждения реестров
+                     -- того же дня пропорционально сумме платежа.
+                     + CASE WHEN UPPER(COALESCE(latest.payment_provider, '')) = 'DOLYAME' THEN COALESCE((
+                         SELECT SUM(b.commission_amount * latest.amount / NULLIF(b.amount + b.commission_amount, 0))
+                         FROM {SCHEMA}.bank_statement_transactions b
+                         WHERE b.company_id = %s AND b.removed_at IS NULL AND b.direction = 'in'
+                           AND b.parent_transaction_id IS NULL AND b.commission_amount > 0
+                           AND (b.purpose ILIKE '%%pay_in_4%%' OR b.purpose ILIKE '%%Долями%%')
+                           AND COALESCE(b.settlement_date, b.operation_date::date) = latest.payment_date
+                       ), 0) ELSE 0 END
                    END AS commission
             FROM latest
             WHERE payment_date BETWEEN %s AND %s
-        ''', (company_id, company_tz, company_id, company_id, date_from, date_to))
+        ''', (company_id, company_tz, company_id, company_id, company_id, date_from, date_to))
 
         payments_rows = cur.fetchall()
         cur.execute(f'''
