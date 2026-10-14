@@ -462,12 +462,20 @@ def handle_company(cur, webhook: str, settings: Dict[str, Any], event: Dict[str,
     if user_link.get('entity_id') and user_link.get('entity') == 'deal':
         _, err = call(webhook, 'crm.deal.update', {'id': user_link['entity_id'], 'fields': {'COMPANY_ID': crm_company}})
         result['deal_linked'] = not err
-    elif user_link.get('entity_id') and user_link.get('entity') == 'lead':
+    if user_link.get('entity_id') and user_link.get('entity') == 'lead':
         _, err = call(webhook, 'crm.lead.update', {'id': user_link['entity_id'],
                                                    'fields': {'COMPANY_ID': crm_company, 'COMPANY_TITLE': company['name'][:255]}})
         result['lead_linked'] = not err
-    elif user_link.get('contact'):
-        call(webhook, 'crm.contact.company.add', {'id': user_link['contact'], 'fields': {'COMPANY_ID': crm_company}})
+    if user_link.get('contact'):
+        # Связь контакт - компания ставим всегда отдельным вызовом: CONTACT_ID при создании компании
+        # Битрикс24 учитывает не везде, а при повторе (компания уже создана) его не было вовсе.
+        res, err = call(webhook, 'crm.contact.company.items.get', {'id': user_link['contact']})
+        linked = any(str(i.get('COMPANY_ID')) == str(crm_company) for i in (res or []) if isinstance(i, dict))
+        if not linked:
+            _, err = call(webhook, 'crm.contact.company.add', {'id': user_link['contact'], 'fields': {'COMPANY_ID': crm_company}})
+            if err:
+                raise RuntimeError(f'Не удалось привязать компанию к контакту: {err}')
+        result['contact_linked'] = True
     return result
 
 

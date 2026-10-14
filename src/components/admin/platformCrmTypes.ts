@@ -87,6 +87,7 @@ export const describeResult = (e: PlatformCrmEvent) => {
   if (r.contact_id) parts.push(`контакт #${r.contact_id}${r.contact_found ? ' (найден по телефону)' : r.contact_created ? ' (новый)' : ''}`);
   if (r.entity_id) parts.push(`${r.entity === 'lead' ? 'лид' : 'сделка'} #${r.entity_id}`);
   if (r.company_id) parts.push(`компания #${r.company_id}${r.company_created ? ' (новая)' : ''}`);
+  if (r.contact_linked) parts.push('привязана к контакту');
   if (r.requisite && r.requisite !== 'ok') parts.push(`реквизит ИНН не сохранён: ${r.requisite}`);
   if (r.contact_name || r.contact_email) parts.push('контакт обновлён');
   return parts.join(', ');
