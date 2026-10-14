@@ -41,6 +41,21 @@ def short_kind_name(description: Optional[str]) -> str:
     return (text[:1].upper() + text[1:]) if text else (description or '')
 
 
+def short_kind_label(label: str) -> str:
+    '''
+    Короткое название вида оплаты из справочника кассы:
+    «Платёж через счёт "Тинькофф СБП"» -> «Тинькофф СБП»,
+    «Платёж через СБП банка "Точка"» -> «СБП Точка», «Платёж через эквайринг банка "Точка"» -> «Эквайринг Точка».
+    '''
+    text = re.sub(r'^\s*плат[её]ж\s+через\s+', '', label, flags=re.IGNORECASE)
+    if text == label:
+        return label
+    text = re.sub(r'^сч[её]т\s+', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s+банка\s+', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'["«»]', '', text).strip()
+    return (text[:1].upper() + text[1:]) if text else label
+
+
 def payment_kind_label(provider_slug: Optional[str], payment_provider: Optional[str],
                        integration_name: Optional[str], kind_names: Dict[str, str]) -> str:
     '''
@@ -52,11 +67,7 @@ def payment_kind_label(provider_slug: Optional[str], payment_provider: Optional[
     if provider_slug in ('ecomkassa_gateway', 'ecomkassa') and payment_provider:
         code = str(payment_provider).strip()
         label = kind_names.get(code.upper(), code)
-        # «Платёж через счёт "Тинькофф СБП"» -> «Тинькофф СБП».
-        prefix = 'платёж через счёт'
-        if label.lower().replace('ё', 'е').startswith(prefix.replace('ё', 'е')):
-            label = label[len(prefix):].strip().strip('"«»').strip() or label
-        return label
+        return short_kind_label(label)
     return name
 
 
