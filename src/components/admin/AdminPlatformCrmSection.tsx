@@ -203,7 +203,7 @@ const AdminPlatformCrmSection = () => {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Что создавать</Label>
-              <Select value={form.entity} onValueChange={(v) => set({ entity: v as 'deal' | 'lead', stage_id: null })}>
+              <Select value={form.entity} onValueChange={(v) => v && v !== form.entity && set({ entity: v as 'deal' | 'lead', stage_id: null })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="deal">Сделку (с контактом)</SelectItem>
@@ -213,7 +213,7 @@ const AdminPlatformCrmSection = () => {
             </div>
             <div className="space-y-1.5">
               <Label>{form.entity === 'deal' ? 'Воронка и этап' : 'Статус лида'}</Label>
-              <Select value={form.stage_id || ''} onValueChange={(v) => set({ stage_id: v })} disabled={!ref}>
+              <Select key={ref ? 'loaded' : 'empty'} value={form.stage_id || ''} onValueChange={(v) => v && set({ stage_id: v })} disabled={!ref}>
                 <SelectTrigger><SelectValue placeholder={ref ? 'Выберите этап' : 'Сначала проверьте вебхук'} /></SelectTrigger>
                 <SelectContent>
                   {stageGroups.map((g) => (
@@ -236,7 +236,7 @@ const AdminPlatformCrmSection = () => {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Куда записать номер телефона</Label>
-              <Select value={form.phone_field} onValueChange={(v) => set({ phone_field: v })} disabled={!ref}>
+              <Select value={form.phone_field} onValueChange={(v) => v && set({ phone_field: v })} disabled={!ref}>
                 <SelectTrigger><SelectValue placeholder="Телефон контакта" /></SelectTrigger>
                 <SelectContent>
                   {(phoneOptions.length ? phoneOptions : [{ value: 'contact.PHONE', label: 'Контакт · Телефон', type: 'crm_multifield' }])
@@ -250,7 +250,7 @@ const AdminPlatformCrmSection = () => {
             </div>
             <div className="space-y-1.5">
               <Label>ИНН компании</Label>
-              <Select value={form.inn_field} onValueChange={(v) => set({ inn_field: v })} disabled={!ref}>
+              <Select value={form.inn_field} onValueChange={(v) => v && set({ inn_field: v })} disabled={!ref}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="requisite">Реквизиты компании (стандарт Битрикс24)</SelectItem>
@@ -262,7 +262,7 @@ const AdminPlatformCrmSection = () => {
 
           <div className="space-y-1.5 sm:max-w-[50%] sm:pr-2">
             <Label>Поле «Канал коммуникации»</Label>
-            <Select value={form.channel_field || NONE} onValueChange={(v) => set({ channel_field: v === NONE ? null : v, channel_map: {} })} disabled={!ref}>
+            <Select value={form.channel_field || NONE} onValueChange={(v) => v && v !== (form.channel_field || NONE) && set({ channel_field: v === NONE ? null : v, channel_map: {} })} disabled={!ref}>
               <SelectTrigger><SelectValue placeholder="Не передавать" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>Не передавать</SelectItem>
@@ -279,7 +279,7 @@ const AdminPlatformCrmSection = () => {
                       <span className="text-sm text-foreground">{m.label}</span>
                       <Select
                         value={value || NONE}
-                        onValueChange={(v) => set({ channel_map: { ...form.channel_map, [m.key]: v === NONE ? '' : v } })}
+                        onValueChange={(v) => v && set({ channel_map: { ...form.channel_map, [m.key]: v === NONE ? '' : v } })}
                       >
                         <SelectTrigger className="h-9"><SelectValue placeholder="Не заполнять" /></SelectTrigger>
                         <SelectContent>
