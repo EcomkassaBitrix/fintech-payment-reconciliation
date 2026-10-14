@@ -159,7 +159,8 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             body = json.loads(event.get('body') or '{}')
             action = body.get('action')
             if action == 'refund':
-                result = subscription_transactions.refund(cur, int(body.get('payment_id') or 0), user_id)
+                result = subscription_transactions.refund(cur, int(body.get('payment_id') or 0), user_id,
+                                                         float(body['amount']) if body.get('amount') else None)
                 conn.commit()
                 return _resp(200, result)
             if action == 'save_terminal':

@@ -96,7 +96,7 @@ def receipt(terminal: Dict[str, Any], title: str, amount_kop: int, phone: Option
 def init_payment(terminal: Dict[str, Any], *, order_id: str, amount_kop: int, description: str, customer_key: str,
                  recurrent_first: bool, phone: Optional[str] = None, email: Optional[str] = None,
                  success_url: Optional[str] = None, fail_url: Optional[str] = None,
-                 receipt_title: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+                 receipt_title: Optional[str] = None, plain_sale: bool = False) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     '''
     Init. Первый платёж - с Recurrent=Y и CustomerKey: Т‑Банк сохранит карту и пришлёт RebillId
     в уведомлении. Для автосписания - Init без формы оплаты, затем Charge с RebillId.
@@ -108,12 +108,14 @@ def init_payment(terminal: Dict[str, Any], *, order_id: str, amount_kop: int, de
     if recurrent_first:
         payload['Recurrent'] = 'Y'
         payload['OperationInitiatorType'] = '1'
-        if success_url:
-            payload['SuccessURL'] = success_url
-        if fail_url:
-            payload['FailURL'] = fail_url
+    elif plain_sale:
+        payload['OperationInitiatorType'] = '0'
     else:
         payload['OperationInitiatorType'] = 'R'
+    if (recurrent_first or plain_sale) and success_url:
+        payload['SuccessURL'] = success_url
+    if (recurrent_first or plain_sale) and fail_url:
+        payload['FailURL'] = fail_url
     rec = receipt(terminal, receipt_title or description, amount_kop, phone, email)
     if rec:
         payload['Receipt'] = rec
@@ -126,3 +128,17 @@ def charge(terminal: Dict[str, Any], payment_id: str, rebill_id: str) -> Tuple[O
 
 def get_state(terminal: Dict[str, Any], payment_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     return call(terminal, 'GetState', {'PaymentId': payment_id}, timeout=8)
+
+
+def cancel(terminal: Dict[str, Any], payment_id: str, amount_kop: Optional[int] = None,
+           receipt_data: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    '''
+    Cancel: NEW -> CANCELED (отмена до оплаты), AUTHORIZED -> REVERSED, CONFIRMED -> REFUNDED / PARTIAL_REFUNDED
+    (возврат; при полном возврате чек возврата касса формирует по исходному чеку, при частичном - передаём Receipt).
+    '''
+    payload: Dict[str, Any] = {'PaymentId': payment_id}
+    if amount_kop:
+        payload['Amount'] = amount_kop
+    if receipt_data:
+        payload['Receipt'] = receipt_data
+    return call(terminal, 'Cancel', payload, timeout=12)

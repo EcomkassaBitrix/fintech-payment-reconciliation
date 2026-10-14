@@ -50,6 +50,8 @@ def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
     test_checkout {company_id, tariff_slug, period} - ссылка на форму с сохранением карты (Recurrent=Y)
     test_charge {company_id} - списание по сохранённой карте компании прямо сейчас (как автопродление)
     test_status {payment_id} - статус платежа (с запросом GetState)
+    test_checkout {..., scenario: "sale"} - обычная продажа без сохранения карты
+    test_cancel {payment_id, amount?} - отмена неоплаченного или возврат оплаченного (amount - частичный возврат)
     '''
     user_id = event.get('session_user_id')
     conn = psycopg2.connect(os.environ['DATABASE_URL'])
@@ -61,6 +63,15 @@ def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
         if not terminal:
             return respond(400, {'error': 'Терминал Т‑Банка не подключён'})
         action = body['action']
+        if action == 'test_cancel':
+            amount = float(body['amount']) if body.get('amount') else None
+            result = billing.cancel_payment(cur, terminal, int(body.get('payment_id') or 0), user_id, amount)
+            conn.commit()
+            payment = None
+            if result.get('success'):
+                cur.execute(f'SELECT company_id FROM {SCHEMA}.subscription_payments WHERE id = %s', (body.get('payment_id'),))
+                payment = billing.refresh(cur, cur.fetchone()[0], int(body['payment_id']))
+            return respond(200, {**result, 'payment': payment})
         if action == 'test_status':
             cur.execute(f'SELECT company_id FROM {SCHEMA}.subscription_payments WHERE id = %s', (body.get('payment_id'),))
             row = cur.fetchone()
@@ -79,7 +90,9 @@ def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
             if not tariff:
                 return respond(400, {'error': 'Тариф не найден'})
             period = 'year' if body.get('period') == 'year' else 'month'
-            result = billing.start_checkout(cur, terminal, company_id, user_id, tariff, period, None, True, is_test=True)
+            sale = body.get('scenario') == 'sale'
+            result = billing.start_checkout(cur, terminal, company_id, user_id, tariff, period, None, not sale,
+                                            is_test=True, save_card=not sale)
             conn.commit()
             return respond(200, result)
         cur.execute(f'''
@@ -130,7 +143,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': 'OK' if ok else 'BAD TOKEN', 'isBase64Encoded': False}
 
     raw_body = json.loads(event.get('body') or '{}') if event.get('httpMethod') == 'POST' else {}
-    if raw_body.get('action') in ('test_checkout', 'test_charge', 'test_status'):
+    if raw_body.get('action') in ('test_checkout', 'test_charge', 'test_status', 'test_cancel'):
         denied = guard(event, check_company=False)
         if denied:
             return denied

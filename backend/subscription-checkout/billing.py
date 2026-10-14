@@ -6,7 +6,9 @@ import downgrade
 import tbank_billing
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
-FAILED_STATUSES = ('REJECTED', 'CANCELED', 'DEADLINE_EXPIRED', 'AUTH_FAIL', 'REVERSED', 'REFUNDED')
+FAILED_STATUSES = ('REJECTED', 'DEADLINE_EXPIRED', 'AUTH_FAIL', 'ATTEMPTS_EXPIRED')
+CANCELED_STATUSES = ('CANCELED', 'REVERSED')
+REFUND_STATUSES = ('REFUNDED', 'PARTIAL_REFUNDED')
 
 
 def year_price(price: float, discount: float) -> float:
@@ -149,11 +151,32 @@ def mark_failed(cur, pay: Dict[str, Any], message: str) -> None:
                     updated_at = NOW() WHERE id = %s''', (message[:500], pay['id']))
 
 
+def mark_refunded(cur, pay: Dict[str, Any], refunded_kop: Optional[int], partial: bool, user_id=None) -> None:
+    amount = round(refunded_kop / 100, 2) if refunded_kop else float(pay['amount'])
+    cur.execute(f'''
+        UPDATE {SCHEMA}.subscription_payments SET status = %s, refunded_at = COALESCE(refunded_at, NOW()),
+            refunded_by = COALESCE(%s, refunded_by), refund_amount = %s, updated_at = NOW() WHERE id = %s
+    ''', ('partially_refunded' if partial else 'refunded', user_id, amount, pay['id']))
+
+
+def mark_canceled(cur, pay: Dict[str, Any], status: str) -> None:
+    cur.execute(f'''UPDATE {SCHEMA}.subscription_payments SET status = 'canceled', error_message = %s,
+                    updated_at = NOW() WHERE id = %s''', (f'Отменён ({status})', pay['id']))
+
+
 def apply_state(cur, pay: Dict[str, Any], data: Dict[str, Any]) -> str:
     status = str(data.get('Status') or '')
     if status == 'CONFIRMED':
         mark_paid(cur, pay, data)
         return 'paid'
+    if status in REFUND_STATUSES:
+        original, new = data.get('OriginalAmount'), data.get('NewAmount')
+        refunded = (int(original) - int(new)) if original is not None and new is not None else None
+        mark_refunded(cur, pay, refunded, status == 'PARTIAL_REFUNDED')
+        return 'refunded'
+    if status in CANCELED_STATUSES and pay['status'] != 'paid':
+        mark_canceled(cur, pay, status)
+        return 'canceled'
     if status in FAILED_STATUSES:
         mark_failed(cur, pay, f"Оплата не прошла ({status}{', код ' + str(data.get('ErrorCode')) if str(data.get('ErrorCode') or '0') != '0' else ''})")
         return 'failed'
@@ -181,7 +204,8 @@ def create_payment(cur, company_id, user_id, tariff, period, *, keep=None, auto_
     return {'id': pay_id, 'order_id': order_id, 'amount': amount, 'days': days}
 
 
-def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, auto_renew, is_test=False) -> Dict[str, Any]:
+def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, auto_renew, is_test=False,
+                   save_card: bool = True) -> Dict[str, Any]:
     '''Первый платёж с сохранением карты: ссылка на платёжную форму Т‑Банка.'''
     p = create_payment(cur, company_id, user_id, tariff, period, keep=keep, auto_renew=auto_renew, is_test=is_test)
     phone, email = _payer_contacts(cur, user_id)
@@ -191,7 +215,7 @@ def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, aut
         terminal, order_id=p['order_id'], amount_kop=int(round(p['amount'] * 100)),
         description=f"Подписка «{tariff['name']}» на {p['days']} дн.", customer_key=f'company-{company_id}',
         receipt_title=receipt_title(tariff, period, p['days']),
-        recurrent_first=True, phone=phone, email=email, success_url=back, fail_url=back)
+        recurrent_first=save_card, plain_sale=not save_card, phone=phone, email=email, success_url=back, fail_url=back)
     if err or not data or not data.get('PaymentURL'):
         cur.execute(f'''UPDATE {SCHEMA}.subscription_payments SET status = 'failed', error_message = %s,
                         updated_at = NOW() WHERE id = %s''', ((err or 'Т‑Банк не выдал ссылку на оплату')[:500], p['id']))
@@ -231,8 +255,43 @@ def refresh(cur, company_id: int, payment_id: int) -> Optional[Dict[str, Any]]:
             if data and data.get('Success'):
                 apply_state(cur, pay, data)
                 pay = _load_payment(cur, 'p.id = %s', payment_id)
+    cur.execute(f'SELECT refund_amount, is_recurring FROM {SCHEMA}.subscription_payments WHERE id = %s', (pay['id'],))
+    extra = cur.fetchone() or (None, False)
     return {'id': pay['id'], 'status': pay['status'], 'tariff_name': pay['tariff_name'],
-            'period_end': pay['period_end'], 'amount': float(pay['amount']), 'error': pay['error']}
+            'period_end': pay['period_end'], 'amount': float(pay['amount']), 'error': pay['error'],
+            'refund_amount': float(extra[0]) if extra[0] is not None else None, 'is_recurring': extra[1]}
+
+
+def cancel_payment(cur, terminal, payment_id: int, user_id=None, amount: Optional[float] = None) -> Dict[str, Any]:
+    '''
+    Отмена неоплаченного платежа или возврат оплаченного (полный или частичный) через Cancel.
+    Частичный возврат при включённой кассе - с чеком на возвращаемую сумму.
+    '''
+    pay = _load_payment(cur, 'p.id = %s', payment_id)
+    if not pay or not pay['provider_payment_id']:
+        return {'success': False, 'error': 'Платёж не найден в Т‑Банке'}
+    if pay['status'] in ('refunded', 'canceled'):
+        return {'success': False, 'error': 'Платёж уже отменён или возвращён'}
+    total_kop = int(round(float(pay['amount']) * 100))
+    amount_kop = int(round(amount * 100)) if amount else None
+    partial = bool(amount_kop and amount_kop < total_kop and pay['status'] == 'paid')
+    rec = None
+    if partial:
+        cur.execute(f'SELECT user_id FROM {SCHEMA}.subscription_payments WHERE id = %s', (payment_id,))
+        phone, email = _payer_contacts(cur, cur.fetchone()[0])
+        tariff = next((t for t in load_tariffs(cur) if t['id'] == pay['tariff_id']), {'name': pay['tariff_name']})
+        rec = tbank_billing.receipt(terminal, receipt_title(tariff, pay['period'], pay['days']), amount_kop, phone, email)
+    data, err = tbank_billing.cancel(terminal, pay['provider_payment_id'], amount_kop if partial else None, rec)
+    if err or not data:
+        return {'success': False, 'error': err or 'Т‑Банк не ответил'}
+    status = str(data.get('Status') or '')
+    if status in REFUND_STATUSES:
+        original, new = data.get('OriginalAmount'), data.get('NewAmount')
+        refunded = (int(original) - int(new)) if original is not None and new is not None else amount_kop
+        mark_refunded(cur, pay, refunded, status == 'PARTIAL_REFUNDED', user_id)
+    elif status in CANCELED_STATUSES:
+        mark_canceled(cur, pay, status)
+    return {'success': True, 'bank_status': status}
 
 
 def charge_saved_card(cur, conn, terminal, company_id: int, tariff: Dict[str, Any], period: str, rebill_id: str,

@@ -47,7 +47,9 @@ const STATUSES: Record<string, { label: string; className: string }> = {
   paid: { label: 'Оплачен', className: 'bg-success/10 text-success border-success/20' },
   pending: { label: 'Ожидает оплаты', className: 'bg-warning/10 text-warning border-warning/20' },
   failed: { label: 'Не прошёл', className: 'bg-destructive/10 text-destructive border-destructive/20' },
-  refunded: { label: 'Возвращён', className: 'bg-muted text-muted-foreground border-border' }
+  refunded: { label: 'Возвращён', className: 'bg-muted text-muted-foreground border-border' },
+  partially_refunded: { label: 'Частично возвращён', className: 'bg-muted text-muted-foreground border-border' },
+  canceled: { label: 'Отменён', className: 'bg-muted text-muted-foreground border-border' }
 };
 
 const FILTERS = [
@@ -55,7 +57,8 @@ const FILTERS = [
   ['paid', 'Оплачены'],
   ['failed', 'Не прошли'],
   ['pending', 'Ожидают'],
-  ['refunded', 'Возвраты']
+  ['refunded', 'Возвраты'],
+  ['canceled', 'Отменённые']
 ];
 
 const money = (n: number) => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(n)} ₽`;
@@ -120,7 +123,7 @@ const AdminSubscriptionTransactions = () => {
 
   const refundHint = (tx: Transaction) => {
     if (tx.status === 'refunded') return 'Уже возвращён';
-    if (tx.status !== 'paid') return 'Возвращать нечего — платёж не прошёл';
+    if (!['paid', 'partially_refunded'].includes(tx.status)) return 'Возвращать нечего — платёж не прошёл';
     if (!tx.can_refund) return `Через «${tx.provider_name}» возврат делается вручную`;
     return 'Вернуть платёж';
   };
@@ -181,7 +184,7 @@ const AdminSubscriptionTransactions = () => {
                 <TableBody>
                   {items.map((tx) => {
                     const st = STATUSES[tx.status] || { label: tx.status, className: '' };
-                    const active = tx.can_refund && tx.status === 'paid';
+                    const active = tx.can_refund;
                     return (
                       <TableRow key={tx.id}>
                         <TableCell>
