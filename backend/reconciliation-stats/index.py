@@ -49,7 +49,7 @@ def payment_kind_label(provider_slug: Optional[str], payment_provider: Optional[
     платёжек - название интеграции. Неизвестный код показываем как есть.
     '''
     name = integration_name or 'Платёжная интеграция'
-    if provider_slug == 'ecomkassa_gateway' and payment_provider:
+    if provider_slug in ('ecomkassa_gateway', 'ecomkassa') and payment_provider:
         code = str(payment_provider).strip()
         return kind_names.get(code.upper(), code)
     return name
@@ -211,7 +211,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
                 JOIN {SCHEMA}.integration_categories c ON c.id = p.category_id
                 LEFT JOIN {SCHEMA}.ecomkassa_receipts er ON er.id = wp.receipt_id
-                WHERE wp.company_id = %s AND c.slug = 'payments'
+                WHERE wp.company_id = %s AND (c.slug = 'payments' OR p.slug = 'ecomkassa')
                   AND wp.removed_at IS NULL AND ui.status = 'active'
             ), latest AS (
                 SELECT
