@@ -21,7 +21,7 @@ interface ReconciliationTotals {
 interface ReconciliationTilesProps {
   totals: ReconciliationTotals;
   onTileClick?: (typeKey: TypeFilterKey) => void;
-  locked?: boolean;
+  lockedTiles?: Partial<Record<TypeFilterKey, boolean>>;
 }
 
 const formatMoney = (value: number) =>
@@ -39,7 +39,7 @@ const bankVsReceiptsLabel = (bankAmount: number, receiptsAmount: number) => {
   return { text: `разница ${sign}${formatMoney(Math.abs(diff))}`, color: 'text-warning' };
 };
 
-const ReconciliationTiles = ({ totals, onTileClick, locked = true }: ReconciliationTilesProps) => {
+const ReconciliationTiles = ({ totals, onTileClick, lockedTiles = {} }: ReconciliationTilesProps) => {
   const [lockOpen, setLockOpen] = useState(false);
   // Чеки кассы vs чеки ОФД сравниваются по КОЛИЧЕСТВУ документов - это два
   // разных источника одного и того же чека (касса пробивает сама, ОФД
@@ -49,8 +49,9 @@ const ReconciliationTiles = ({ totals, onTileClick, locked = true }: Reconciliat
   const kassaCountMatchesOfd = ofdCount !== undefined && ofdCount === totals.receipts.count;
   const bankVsReceipts = bankVsReceiptsLabel(totals.bank.amount, totals.receipts.amount);
 
+  const isLocked = (typeKey: TypeFilterKey) => !!lockedTiles[typeKey];
   const clickable = (typeKey: TypeFilterKey) =>
-    locked
+    isLocked(typeKey)
       ? {
           role: 'button' as const,
           tabIndex: 0,
@@ -77,18 +78,18 @@ const ReconciliationTiles = ({ totals, onTileClick, locked = true }: Reconciliat
           }
         }
       : {};
-  const cardClass = `relative overflow-hidden border-border bg-card group ${
-    locked || onTileClick ? 'cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : ''
+  const cardClass = (typeKey: TypeFilterKey) => `relative overflow-hidden border-border bg-card group ${
+    isLocked(typeKey) || onTileClick ? 'cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : ''
   }`;
-  const openHint = !locked && onTileClick ? (
+  const openHint = (typeKey: TypeFilterKey) => !isLocked(typeKey) && onTileClick ? (
     <Icon
       name="ArrowUpRight"
       size={16}
       className="ml-auto text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-primary"
     />
   ) : null;
-  const blurClass = locked ? 'blur-md select-none pointer-events-none' : '';
-  const lockOverlay = locked ? (
+  const blurClass = (typeKey: TypeFilterKey) => isLocked(typeKey) ? 'blur-md select-none pointer-events-none' : '';
+  const lockOverlay = (typeKey: TypeFilterKey) => isLocked(typeKey) ? (
     <div className="absolute inset-0 flex items-center justify-center">
       <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background/80 text-muted-foreground transition-colors group-hover:text-primary">
         <Icon name="Lock" size={18} />
@@ -98,15 +99,15 @@ const ReconciliationTiles = ({ totals, onTileClick, locked = true }: Reconciliat
 
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
-      <Card className={cardClass} {...clickable('payments')}>
+      <Card className={cardClass('payments')} {...clickable('payments')}>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Icon name="CreditCard" size={16} />
             Платежи
-            {openHint}
+            {openHint('payments')}
           </CardTitle>
         </CardHeader>
-        <CardContent className={blurClass} aria-hidden={locked || undefined}>
+        <CardContent className={blurClass('payments')} aria-hidden={isLocked('payments') || undefined}>
           <div className="text-2xl xl:text-3xl font-display font-bold text-foreground whitespace-nowrap">
             {formatMoney(totals.payments.amount)}
           </div>
@@ -114,18 +115,18 @@ const ReconciliationTiles = ({ totals, onTileClick, locked = true }: Reconciliat
             {totals.payments.count} транзакций
           </p>
         </CardContent>
-        {lockOverlay}
+        {lockOverlay('payments')}
       </Card>
 
-      <Card className={cardClass} {...clickable('receipts')}>
+      <Card className={cardClass('receipts')} {...clickable('receipts')}>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Icon name="Receipt" size={16} />
             Чеки
-            {openHint}
+            {openHint('receipts')}
           </CardTitle>
         </CardHeader>
-        <CardContent className={blurClass} aria-hidden={locked || undefined}>
+        <CardContent className={blurClass('receipts')} aria-hidden={isLocked('receipts') || undefined}>
           <div className="text-2xl xl:text-3xl font-display font-bold text-foreground whitespace-nowrap">
             {formatMoney(totals.receipts.amount)}
           </div>
@@ -135,18 +136,18 @@ const ReconciliationTiles = ({ totals, onTileClick, locked = true }: Reconciliat
             </p>
           )}
         </CardContent>
-        {lockOverlay}
+        {lockOverlay('receipts')}
       </Card>
 
-      <Card className={cardClass} {...clickable('money')}>
+      <Card className={cardClass('money')} {...clickable('money')}>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Icon name="Landmark" size={16} />
             Деньги
-            {openHint}
+            {openHint('money')}
           </CardTitle>
         </CardHeader>
-        <CardContent className={blurClass} aria-hidden={locked || undefined}>
+        <CardContent className={blurClass('money')} aria-hidden={isLocked('money') || undefined}>
           <div className="text-2xl xl:text-3xl font-display font-bold text-foreground whitespace-nowrap">
             {formatMoney(totals.bank.amount)}
           </div>
@@ -154,7 +155,7 @@ const ReconciliationTiles = ({ totals, onTileClick, locked = true }: Reconciliat
             {bankVsReceipts.text}, комиссия {formatMoney(totals.bank.commission_amount)}
           </p>
         </CardContent>
-        {lockOverlay}
+        {lockOverlay('money')}
       </Card>
 
       <Dialog open={lockOpen} onOpenChange={setLockOpen}>

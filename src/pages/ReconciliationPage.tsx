@@ -69,6 +69,26 @@ const ReconciliationPage = ({ onOpenTransactions }: ReconciliationPageProps) => 
   const { toast } = useToast();
   const { currentCompany, cronEnabled } = useAuth();
   const companyId = currentCompany?.id;
+  const [connectedCategories, setConnectedCategories] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    fetch(`${functionUrls['integrations-list']}?company_id=${companyId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const list: { category_slug?: string }[] = d?.user_integrations || [];
+        setConnectedCategories(new Set(list.map((i) => i.category_slug || '').filter(Boolean)));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  const tileLocked = (categorySlug: string, count: number) =>
+    !!connectedCategories && !connectedCategories.has(categorySlug) && count === 0;
 
   const fetchStats = useCallback(async () => {
     if (!companyId) return;
@@ -186,6 +206,11 @@ const ReconciliationPage = ({ onOpenTransactions }: ReconciliationPageProps) => 
         <>
           <ReconciliationTiles
             totals={data.totals}
+            lockedTiles={{
+              payments: tileLocked('payments', data.totals.payments.count),
+              receipts: tileLocked('cash_registers', data.totals.receipts.count),
+              money: tileLocked('banks', data.totals.bank.count)
+            }}
             onTileClick={onOpenTransactions ? (typeKey) => onOpenTransactions(dateFrom, dateTo, typeKey) : undefined}
           />
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
