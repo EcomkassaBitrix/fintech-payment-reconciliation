@@ -64,7 +64,7 @@ const CheckoutPanel = ({
         </Button>
         <Button
           onClick={onPay}
-          disabled={paying || payBlocked}
+          disabled={paying || payBlocked || !online}
           variant={removing > 0 ? 'destructive' : 'default'}
         >
           <Icon
@@ -72,10 +72,17 @@ const CheckoutPanel = ({
             size={16}
             className={`mr-2 ${paying ? 'animate-spin' : ''}`}
           />
-          Оплатить {money(price(chosen))}
+          {online ? `Оплатить картой ${money(price(chosen))}` : `Оплатить ${money(price(chosen))}`}
         </Button>
       </div>
     </div>
+
+    {!online && (
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+        <Icon name="Clock" size={16} className="mt-0.5 shrink-0 text-warning" />
+        <span>Онлайн‑оплата временно недоступна. Напишите нам — поможем продлить подписку.</span>
+      </div>
+    )}
 
     {online && (
       <div className="mt-3 space-y-2 text-sm">

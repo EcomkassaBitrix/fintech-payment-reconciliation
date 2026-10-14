@@ -120,7 +120,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     GET ?company_id= - тарифы, текущая подписка, история, карта/автопродление, способ оплаты
     POST {action: "pay", company_id, tariff_slug, period, keep, auto_renew} - при подключённом Т‑Банке
          возвращает payment_url платёжной формы (Recurrent=Y), тариф включается по уведомлению банка;
-         без платёжной системы - активирует тариф сразу (как раньше)
+         без включённой платёжной системы - отказ 409 payments_off (бесплатной активации нет)
     POST {action: "payment_status", company_id, payment_id} - статус после возврата с формы
     POST {action: "autopay", company_id, enabled} - вкл/выкл автопродление
     POST {action: "remove_card", company_id} - забыть карту (автопродление выключается)
@@ -265,19 +265,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 conn.commit()
                 return respond(200, result)
 
-            removed = {}
-            if over:
-                removed = downgrade.apply(cur, company_id, downgrade.to_delete(over, keep))
-            days, amount = billing.period_terms(tariff, period)
-            period_end = billing.activate(cur, company_id, tariff['id'], days)
-            cur.execute(f'''
-                INSERT INTO {SCHEMA}.subscription_payments
-                    (company_id, user_id, tariff_id, period, days, amount, status, period_end, method, paid_at)
-                VALUES (%s, %s, %s, %s, %s, %s, 'paid', %s, 'manual', NOW())
-            ''', (company_id, user_id, tariff['id'], period, days, amount, period_end))
-            conn.commit()
-            return respond(200, {'success': True, 'tariff_name': tariff['name'],
-                                 'period_end': period_end, 'amount': amount, 'removed': removed})
+            # Без подключённой и включённой платёжной системы тариф не активируется: раньше здесь
+            # тариф включался бесплатно (method='manual'). Начислить вручную можно из админки.
+            print(f"pay blocked company={company_id}: payment system is off")
+            return respond(409, {'error': 'Онлайн-оплата временно недоступна. Напишите нам — поможем продлить подписку.',
+                                 'code': 'payments_off'})
 
         return respond(405, {'error': 'Method not allowed'})
     finally:
