@@ -221,7 +221,7 @@ const AdminPaymentProvidersSection = () => {
                   </div>
                 )}
                 {isTbank && <TbankWebhookUrl />}
-                {isTbank && p.connected && <TbankTestPanel />}
+                {isTbank && p.connected && <TbankTestPanel receiptOn={Boolean(p.config?.receipt_enabled)} />}
               </CardContent>
             </Card>
           );

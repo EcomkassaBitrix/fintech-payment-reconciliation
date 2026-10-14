@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -42,14 +41,21 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const SCENARIOS = [
-  { key: 'sale', title: 'Продажа', text: 'Обычная оплата картой без сохранения карты. Тариф продлевается, чек продажи уходит в кассу.' },
-  { key: 'cancel', title: 'Отмена', text: 'Платёж создаётся и отменяется до оплаты — в банке статус CANCELED, деньги не списываются, чека нет.' },
-  { key: 'refund', title: 'Возврат', text: 'Возврат оплаченного платежа — полный или частичный. Касса Т‑Банка формирует чек возврата.' }
+  { key: 't1', title: 'Тест 1', name: 'Успешная оплата', card: '2200 7702 3909 7761',
+    text: 'Оплата без сохранения карты (Recurrent не передаётся). Ожидаем статус CONFIRMED и уведомление, на которое сервис отвечает OK.' },
+  { key: 't2', title: 'Тест 2', name: 'Неуспешная оплата', card: '2201 3820 0000 0831',
+    text: 'Оплата картой без денег. Ожидаем отказ (REJECTED) и уведомление, на которое сервис отвечает OK.' },
+  { key: 't3', title: 'Тест 3', name: 'Возврат', card: '2200 7702 3909 7761',
+    text: 'Сначала успешная оплата, затем полный возврат. Ожидаем статус REFUNDED.' },
+  { key: 't7', title: 'Тест 7', name: 'Формирование чека', card: '2200 7702 3909 7761',
+    text: 'Успешная оплата с передачей чека: тариф, признак способа и предмета расчёта, НДС, СНО. Нужна включённая передача чека.' },
+  { key: 't8', title: 'Тест 8', name: 'Формирование чека возврата', card: '2200 7702 3909 7761',
+    text: 'Возврат оплаченного платежа с чеком возврата на возвращаемую сумму. Нужна включённая передача чека.' }
 ];
 
 const selectClass = 'h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground';
 
-const TbankTestPanel = () => {
+const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [companies, setCompanies] = useState<Option[]>([]);
@@ -58,8 +64,7 @@ const TbankTestPanel = () => {
   const [tariffSlug, setTariffSlug] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [last, setLast] = useState<TestState | null>(null);
-  const [scenario, setScenario] = useState('sale');
-  const [refundAmount, setRefundAmount] = useState('');
+  const [scenario, setScenario] = useState('t1');
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -207,7 +212,7 @@ const TbankTestPanel = () => {
             key={sc.key}
             type="button"
             onClick={() => setScenario(sc.key)}
-            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               scenario === sc.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -215,70 +220,65 @@ const TbankTestPanel = () => {
           </button>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">{SCENARIOS.find((sc) => sc.key === scenario)?.text}</p>
+      {(() => {
+        const sc = SCENARIOS.find((x) => x.key === scenario)!;
+        const needsReceipt = scenario === 't7' || scenario === 't8';
+        const isRefund = scenario === 't3' || scenario === 't8';
+        const canRefund = last && ['paid', 'partially_refunded'].includes(last.status);
+        return (
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-foreground">{sc.title}. {sc.name}</p>
+              <p className="text-xs text-muted-foreground">{sc.text}</p>
+              <p className="mt-1 text-xs">
+                Карта: <span className="font-mono text-foreground">{sc.card}</span> · 12/30 · CVC 123
+              </p>
+              {needsReceipt && !receiptOn && (
+                <p className="mt-1 text-xs text-destructive">
+                  Передача чека выключена — включите её в «Изменить» терминала, иначе тест не пройдёт.
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(!isRefund || !canRefund) && (
+                <Button disabled={!ready || Boolean(busy)} onClick={() => startCheckout('sale')}>
+                  <Icon name={busy === 'checkout' ? 'Loader2' : 'CreditCard'} size={14} className={`mr-2 ${busy === 'checkout' ? 'animate-spin' : ''}`} />
+                  {isRefund ? '1. Оплатить' : 'Оплатить'}
+                </Button>
+              )}
+              {isRefund && (
+                <Button variant="destructive" disabled={!canRefund || Boolean(busy)} onClick={() => cancel()}>
+                  <Icon name={busy === 'cancel' ? 'Loader2' : 'Undo2'} size={14} className={`mr-2 ${busy === 'cancel' ? 'animate-spin' : ''}`} />
+                  2. Вернуть платёж
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
-      {scenario === 'sale' && (
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={!ready || Boolean(busy)} onClick={() => startCheckout('sale')}>
-            <Icon name={busy === 'checkout' ? 'Loader2' : 'ShoppingCart'} size={14} className={`mr-2 ${busy === 'checkout' ? 'animate-spin' : ''}`} />
-            Оплатить
-          </Button>
-          <Button variant="outline" disabled={!ready || Boolean(busy)} onClick={() => startCheckout('save')}>
-            <Icon name="CreditCard" size={14} className="mr-2" />
+      <details className="text-xs">
+        <summary className="cursor-pointer text-muted-foreground">Дополнительно: автоплатёж и отмена</summary>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" disabled={!ready || Boolean(busy)} onClick={() => startCheckout('save')}>
             Оплатить и сохранить карту
           </Button>
-          <Button variant="outline" disabled={!companyId || Boolean(busy)} onClick={chargeCard}>
-            <Icon name={busy === 'charge' ? 'Loader2' : 'RefreshCw'} size={14} className={`mr-2 ${busy === 'charge' ? 'animate-spin' : ''}`} />
+          <Button size="sm" variant="outline" disabled={!companyId || Boolean(busy)} onClick={chargeCard}>
             Списать по сохранённой карте
           </Button>
-        </div>
-      )}
-
-      {scenario === 'cancel' && (
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" disabled={!ready || Boolean(busy)} onClick={() => startCheckout('create')}>
-            <Icon name={busy === 'checkout' ? 'Loader2' : 'FilePlus'} size={14} className={`mr-2 ${busy === 'checkout' ? 'animate-spin' : ''}`} />
-            1. Создать платёж
+          <Button size="sm" variant="outline" disabled={!ready || Boolean(busy)} onClick={() => startCheckout('create')}>
+            Создать платёж
           </Button>
-          <Button variant="destructive" disabled={!last || last.status !== 'pending' || Boolean(busy)} onClick={() => cancel()}>
-            <Icon name={busy === 'cancel' ? 'Loader2' : 'Ban'} size={14} className={`mr-2 ${busy === 'cancel' ? 'animate-spin' : ''}`} />
-            2. Отменить платёж
+          <Button size="sm" variant="outline" disabled={!last || last.status !== 'pending' || Boolean(busy)} onClick={() => cancel()}>
+            Отменить неоплаченный
           </Button>
           {pendingUrl && (
-            <a href={pendingUrl} target="_blank" rel="noopener noreferrer" className="self-center text-xs text-primary hover:underline">
-              Открыть форму оплаты (проверить, что после отмены оплатить нельзя)
+            <a href={pendingUrl} target="_blank" rel="noopener noreferrer" className="self-center text-primary hover:underline">
+              Форма оплаты
             </a>
           )}
         </div>
-      )}
-
-      {scenario === 'refund' && (
-        <div className="space-y-2">
-          {!last || !['paid', 'partially_refunded'].includes(last.status) ? (
-            <p className="text-sm text-muted-foreground">
-              Сначала проведите оплату во вкладке «Продажа» — затем вернитесь сюда. Возврат любого платежа также доступен в
-              таблице «Транзакции».
-            </p>
-          ) : (
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="space-y-1.5">
-                <Label>Сумма возврата, ₽</Label>
-                <Input
-                  className="w-40"
-                  inputMode="decimal"
-                  value={refundAmount}
-                  onChange={(e) => setRefundAmount(e.target.value.replace(',', '.').replace(/[^\d.]/g, ''))}
-                  placeholder={`${(last.amount || 0) - (last.refund_amount || 0)} (полностью)`}
-                />
-              </div>
-              <Button variant="destructive" disabled={Boolean(busy)} onClick={() => cancel(refundAmount ? Number(refundAmount) : undefined)}>
-                <Icon name={busy === 'cancel' ? 'Loader2' : 'Undo2'} size={14} className={`mr-2 ${busy === 'cancel' ? 'animate-spin' : ''}`} />
-                {refundAmount ? 'Вернуть частично' : 'Вернуть полностью'}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+      </details>
 
       {last && (
         <div className="flex">

@@ -81,7 +81,8 @@ def _payer_contacts(cur, user_id):
 def _load_payment(cur, where: str, value) -> Optional[Dict[str, Any]]:
     cur.execute(f'''
         SELECT p.id, p.company_id, p.user_id, p.tariff_id, p.period, p.days, p.amount, p.status,
-               p.keep_data, p.auto_renew, p.is_recurring, p.provider_payment_id, t.name, p.period_end, p.error_message
+               p.keep_data, p.auto_renew, p.is_recurring, p.provider_payment_id, t.name, p.period_end, p.error_message,
+               p.refund_amount
         FROM {SCHEMA}.subscription_payments p JOIN {SCHEMA}.tariffs t ON t.id = p.tariff_id
         WHERE {where} FOR UPDATE OF p
     ''', (value,))
@@ -89,7 +90,7 @@ def _load_payment(cur, where: str, value) -> Optional[Dict[str, Any]]:
     if not r:
         return None
     keys = ['id', 'company_id', 'user_id', 'tariff_id', 'period', 'days', 'amount', 'status', 'keep',
-            'auto_renew', 'is_recurring', 'provider_payment_id', 'tariff_name', 'period_end', 'error']
+            'auto_renew', 'is_recurring', 'provider_payment_id', 'tariff_name', 'period_end', 'error', 'refund_amount']
     return dict(zip(keys, r))
 
 
@@ -274,14 +275,20 @@ def cancel_payment(cur, terminal, payment_id: int, user_id=None, amount: Optiona
         return {'success': False, 'error': 'Платёж уже отменён или возвращён'}
     total_kop = int(round(float(pay['amount']) * 100))
     amount_kop = int(round(amount * 100)) if amount else None
-    partial = bool(amount_kop and amount_kop < total_kop and pay['status'] == 'paid')
+    left_kop = total_kop - int(round(float(pay.get('refund_amount') or 0) * 100))
+    if amount_kop and amount_kop > left_kop:
+        return {'success': False, 'error': f'Вернуть можно не больше {left_kop / 100} ₽'}
+    partial = bool(amount_kop and amount_kop < total_kop)
     rec = None
-    if partial:
+    if pay['status'] in ('paid', 'partially_refunded'):
+        # Чек возврата (тест-кейс №8): передаём позицию на возвращаемую сумму и при полном возврате.
         cur.execute(f'SELECT user_id FROM {SCHEMA}.subscription_payments WHERE id = %s', (payment_id,))
         phone, email = _payer_contacts(cur, cur.fetchone()[0])
         tariff = next((t for t in load_tariffs(cur) if t['id'] == pay['tariff_id']), {'name': pay['tariff_name']})
-        rec = tbank_billing.receipt(terminal, receipt_title(tariff, pay['period'], pay['days']), amount_kop, phone, email)
-    data, err = tbank_billing.cancel(terminal, pay['provider_payment_id'], amount_kop if partial else None, rec)
+        refund_kop = amount_kop or (total_kop - int(round(float(pay.get('refund_amount') or 0) * 100)))
+        rec = tbank_billing.receipt(terminal, receipt_title(tariff, pay['period'], pay['days']), refund_kop, phone, email)
+        amount_kop = refund_kop
+    data, err = tbank_billing.cancel(terminal, pay['provider_payment_id'], amount_kop, rec)
     if err or not data:
         return {'success': False, 'error': err or 'Т‑Банк не ответил'}
     status = str(data.get('Status') or '')

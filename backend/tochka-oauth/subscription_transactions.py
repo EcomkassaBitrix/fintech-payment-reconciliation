@@ -140,7 +140,7 @@ def refund(cur, payment_id: int, user_id, amount: Optional[float] = None) -> Dic
     if want <= 0 or want > left:
         return {'success': False, 'error': f'Вернуть можно не больше {left} ₽'}
     partial = want < tx['amount']
-    rec = _refund_receipt(cur, payment_id, int(round(want * 100))) if partial else None
+    rec = _refund_receipt(cur, payment_id, int(round(want * 100)))
     data, err = _tbank_cancel(cur, r[15], int(round(want * 100)), rec)
     if err:
         return {'success': False, 'error': err}
