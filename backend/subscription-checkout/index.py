@@ -198,15 +198,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if method == 'GET':
             cur.execute(f'''
                 SELECT p.id, t.name, p.period, p.days, p.amount, p.status, p.period_end, p.created_at, p.method,
-                       p.is_recurring, p.error_message
+                       p.is_recurring, p.error_message, p.paid_at, p.refund_amount, p.refunded_at,
+                       CASE WHEN p.status = 'pending' THEN p.payment_url END
                 FROM {SCHEMA}.subscription_payments p JOIN {SCHEMA}.tariffs t ON t.id = p.tariff_id
                 WHERE p.company_id = %s AND (p.status <> 'pending' OR p.created_at > NOW() - INTERVAL '1 day')
-                ORDER BY p.created_at DESC LIMIT 20
+                ORDER BY p.created_at DESC LIMIT 100
             ''', (company_id,))
             payments = [{
                 'id': r[0], 'tariff_name': r[1], 'period': r[2], 'days': r[3], 'amount': float(r[4]),
                 'status': r[5], 'period_end': r[6], 'created_at': r[7], 'method': r[8],
-                'is_recurring': r[9], 'error': r[10]
+                'is_recurring': r[9], 'error': r[10], 'paid_at': r[11],
+                'refund_amount': float(r[12]) if r[12] is not None else None, 'refunded_at': r[13],
+                'payment_url': r[14]
             } for r in cur.fetchall()]
             cur.execute(f'''
                 SELECT t.modules, t.max_companies, t.max_users, t.max_integrations, t.max_automations

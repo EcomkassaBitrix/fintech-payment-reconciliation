@@ -24,6 +24,11 @@ export interface Payment {
   status?: string;
   is_recurring?: boolean;
   error?: string | null;
+  days?: number;
+  paid_at?: string | null;
+  refund_amount?: number | null;
+  refunded_at?: string | null;
+  payment_url?: string | null;
 }
 
 export interface AutoPay {
