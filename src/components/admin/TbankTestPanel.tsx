@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import functionUrls from '../../../backend/func2url.json';
 import PaymentResultDialog, { PaymentResultState } from '@/components/subscription/PaymentResultDialog';
 import { formatLongDate } from '@/lib/subscription';
+import { openPaymentPage } from '@/lib/openPayment';
 
 const urls = functionUrls as Record<string, string>;
 const checkout = urls['subscription-checkout'];
@@ -148,7 +149,6 @@ const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
       else setResult({ kind: 'pending' });
     };
     setTimeout(poll, 1000);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startCheckout = async (mode: 'sale' | 'save' | 'create') => {
@@ -166,7 +166,14 @@ const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
           setBusy(null);
           return;
         }
-        window.location.href = d.payment_url;
+        const opened = openPaymentPage(d.payment_url);
+        setPendingUrl(d.payment_url);
+        await checkStatus(d.payment_id, true);
+        toast({
+          title: opened ? 'Форма оплаты открыта в новой вкладке' : 'Браузер заблокировал вкладку',
+          description: 'Оплатите и нажмите «Обновить статус»'
+        });
+        setBusy(null);
         return;
       }
       toast({ title: 'Банк не принял платёж', description: d.error, variant: 'destructive' });
@@ -310,6 +317,15 @@ const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
           )}
         </div>
       </details>
+
+      {pendingUrl && last?.status === 'pending' && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-card p-3 text-sm">
+          <span className="flex-1">Форма оплаты открыта в новой вкладке. Оплатите и нажмите «Обновить статус».</span>
+          <a href={pendingUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+            Открыть форму ещё раз
+          </a>
+        </div>
+      )}
 
       {last && (
         <div className="flex">

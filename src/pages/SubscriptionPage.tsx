@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { SUBSCRIPTION_STATUS, subscriptionEndDate, daysLeft, formatLongDate } from '@/lib/subscription';
 import functionUrls from '../../backend/func2url.json';
@@ -12,6 +13,7 @@ import {
 } from '@/components/profile/DowngradeKeepPicker';
 import { AutoPay, CurrentPlan, Payment, Period, PlanTariff } from '@/components/subscription/subscriptionTypes';
 import AutoPayCard from '@/components/subscription/AutoPayCard';
+import { openPaymentPage } from '@/lib/openPayment';
 import LinkedCardRow from '@/components/subscription/LinkedCardRow';
 import PaymentResultDialog, { PaymentResultState } from '@/components/subscription/PaymentResultDialog';
 import CurrentPlanCard from '@/components/subscription/CurrentPlanCard';
@@ -45,6 +47,8 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
   const [autoRenew, setAutoRenew] = useState(true);
   const [autopayBusy, setAutopayBusy] = useState(false);
   const [result, setResult] = useState<PaymentResultState | null>(null);
+  const [paymentLink, setPaymentLink] = useState<{ url: string; id: number } | null>(null);
+  const [payCheck, setPayCheck] = useState(0);
 
   useEffect(() => {
     if (paid || payError) resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -113,7 +117,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
     };
     poll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
+  }, [companyId, payCheck]);
 
   const updateAutopay = async (body: Record<string, unknown>, success: string) => {
     if (!companyId) return;
@@ -210,28 +214,14 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success && data.payment_url) {
-        window.location.href = data.payment_url;
+        const opened = openPaymentPage(data.payment_url);
+        setPaymentLink({ url: data.payment_url, id: data.payment_id });
+        if (!opened) toast({ title: 'Браузер заблокировал новую вкладку', description: 'Нажмите «Перейти к оплате»' });
         return;
       }
-      if (!res.ok || !data.success) {
-        const message = data.error || `Сервер ответил ошибкой (${res.status})`;
-        setPayError(message);
-        toast({ title: 'Не удалось оплатить', description: message, variant: 'destructive' });
-        return;
-      }
-      const result = {
-        title: isRenewal
-          ? `Оплата принята, тариф «${data.tariff_name}» продлён`
-          : `Оплата принята, тариф «${data.tariff_name}» оплачен`,
-        until: formatLongDate(data.period_end)
-      };
-      const removedTotal = Object.values((data.removed || {}) as Record<string, number>).reduce((a, b) => a + b, 0);
-      if (removedTotal > 0) result.title += `. Удалено лишнего: ${removedTotal}`;
-      setPaid(result);
-      toast({ title: result.title, description: `Срок действия: до ${result.until}` });
-      setSelected(null);
-      await refreshCompanies();
-      load();
+      const message = data.error || `Сервер ответил ошибкой (${res.status})`;
+      setPayError(message);
+      toast({ title: 'Не удалось оплатить', description: message, variant: 'destructive' });
     } catch {
       setPayError('Нет связи с сервером, попробуйте ещё раз');
       toast({ title: 'Ошибка подключения', variant: 'destructive' });
@@ -326,6 +316,32 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
             <PaymentResultAndHistory paid={paid} payError={payError} resultRef={resultRef} payments={payments} />
           </div>
         )}
+      {paymentLink && (
+        <div className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-xl flex-col gap-3 rounded-xl border border-primary/40 bg-card p-4 shadow-2xl sm:flex-row sm:items-center">
+          <div className="flex-1 text-sm">
+            <div className="font-semibold text-foreground">Оплата открыта на странице Т‑Банка</div>
+            <div className="text-muted-foreground">Оплатите во вкладке банка, затем нажмите «Я оплатил».</div>
+          </div>
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href={paymentLink.url} target="_blank" rel="noopener noreferrer">Перейти к оплате</a>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                const params = new URLSearchParams(window.location.search);
+                params.set('sp', String(paymentLink.id));
+                window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
+                setPaymentLink(null);
+                setPayCheck((n) => n + 1);
+              }}
+            >
+              Я оплатил
+            </Button>
+          </div>
+        </div>
+      )}
+
       <PaymentResultDialog
         state={result}
         onClose={() => setResult(null)}
