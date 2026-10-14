@@ -127,7 +127,7 @@ def load_reference(webhook_url: str) -> Tuple[Optional[Dict[str, Any]], str]:
 
 SETTINGS_COLUMNS = ('webhook_url', 'is_enabled', 'entity', 'stage_id', 'phone_field', 'phone_field_type',
                     'phone_to_contact', 'channel_field', 'channel_field_type', 'inn_field', 'inn_field_type',
-                    'title_template', 'updated_at')
+                    'title_template', 'channel_map', 'updated_at')
 
 
 def load_settings(cur) -> Dict[str, Any]:
@@ -150,19 +150,21 @@ def save_settings(cur, user_id: int, body: Dict[str, Any]) -> Optional[str]:
     if enabled and not stage:
         return 'Выберите воронку и этап, куда класть ' + ('сделки' if entity == 'deal' else 'лиды')
     title = str(body.get('title_template') or '').strip()[:255] or 'Регистрация в Сверке: {name}'
+    raw_map = body.get('channel_map') if isinstance(body.get('channel_map'), dict) else {}
+    channel_map = {k: str(v)[:100] for k, v in raw_map.items() if k in CHANNEL_LABELS and v not in (None, '')}
     cur.execute(f'''
         UPDATE {SCHEMA}.platform_crm_settings SET
             webhook_url = %s, is_enabled = %s, entity = %s, stage_id = %s,
             phone_field = %s, phone_field_type = %s, phone_to_contact = %s,
             channel_field = %s, channel_field_type = %s, inn_field = %s, inn_field_type = %s,
-            title_template = %s, updated_at = NOW(), updated_by = %s
+            title_template = %s, channel_map = %s, updated_at = NOW(), updated_by = %s
         WHERE id = 1
     ''', (webhook or None, enabled, entity, stage,
           str(body.get('phone_field') or 'contact.PHONE')[:150], (str(body.get('phone_field_type') or '')[:50] or None),
           bool(body.get('phone_to_contact', True)),
           (str(body.get('channel_field') or '')[:150] or None), (str(body.get('channel_field_type') or '')[:50] or None),
           str(body.get('inn_field') or 'requisite')[:150], (str(body.get('inn_field_type') or '')[:50] or None),
-          title, user_id))
+          title, json.dumps(channel_map), user_id))
     return None
 
 
@@ -262,6 +264,16 @@ def _enum_items(webhook: str, cache: Dict[str, Any], obj: str, code: str) -> Opt
 
 
 def _extra_fields(settings: Dict[str, Any], target: str, phone: Optional[str], channel: Optional[str],
+                  webhook: str, cache: Dict[str, Any], channel_key: Optional[str] = None) -> Dict[str, Any]:
+    fields = _extra_fields_base(settings, target, phone, channel, webhook, cache)
+    obj, code = _ref(settings.get('channel_field'))
+    mapped = (settings.get('channel_map') or {}).get(channel_key or '')
+    if mapped and obj == target and code and settings.get('channel_field_type') == 'enumeration':
+        fields[code] = mapped
+    return fields
+
+
+def _extra_fields_base(settings: Dict[str, Any], target: str, phone: Optional[str], channel: Optional[str],
                   webhook: str, cache: Dict[str, Any]) -> Dict[str, Any]:
     '''Поля «телефон» и «канал связи», которые выбраны для объекта target (contact / deal / lead).'''
     fields: Dict[str, Any] = {}
@@ -293,7 +305,8 @@ def handle_register(cur, webhook: str, settings: Dict[str, Any], event: Dict[str
         raise RuntimeError('Пользователь не найден')
     link = _link(cur, 'user', user['id'])
     phone = _phone(user['phone'])
-    channel = CHANNEL_LABELS.get(str((event.get('payload') or {}).get('channel') or ''), (event.get('payload') or {}).get('channel'))
+    channel_key = str((event.get('payload') or {}).get('channel') or '')
+    channel = CHANNEL_LABELS.get(channel_key, channel_key or None)
     result: Dict[str, Any] = {}
 
     contact_id = link.get('contact')
@@ -305,7 +318,7 @@ def handle_register(cur, webhook: str, settings: Dict[str, Any], event: Dict[str
         contact_fields['EMAIL'] = [{'VALUE': user['email'], 'VALUE_TYPE': 'WORK'}]
     if settings.get('phone_to_contact') and phone:
         contact_fields['PHONE'] = [{'VALUE': phone, 'VALUE_TYPE': 'WORK'}]
-    contact_fields.update(_extra_fields(settings, 'contact', phone, channel, webhook, cache))
+    contact_fields.update(_extra_fields(settings, 'contact', phone, channel, webhook, cache, channel_key))
     if not contact_id:
         contact_fields.setdefault('SOURCE_DESCRIPTION', 'Регистрация в Сверке')
         new_id, err = call(webhook, 'crm.contact.add', {'fields': contact_fields})
@@ -337,7 +350,7 @@ def handle_register(cur, webhook: str, settings: Dict[str, Any], event: Dict[str
             fields['PHONE'] = [{'VALUE': phone, 'VALUE_TYPE': 'WORK'}]
         if user['email']:
             fields['EMAIL'] = [{'VALUE': user['email'], 'VALUE_TYPE': 'WORK'}]
-    fields.update(_extra_fields(settings, entity, phone, channel, webhook, cache))
+    fields.update(_extra_fields(settings, entity, phone, channel, webhook, cache, channel_key))
     new_id, err = call(webhook, f'crm.{entity}.add', {'fields': fields})
     if err:
         raise RuntimeError(err)

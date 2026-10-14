@@ -33,7 +33,14 @@ export interface PlatformCrmSettings {
   inn_field: string;
   inn_field_type: string | null;
   title_template: string;
+  channel_map: Record<string, string>;
 }
+
+export const MESSENGER_CHANNELS = [
+  { key: 'telegram', label: 'Telegram' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'max', label: 'MAX' }
+];
 
 export interface PlatformCrmEvent {
   id: number;

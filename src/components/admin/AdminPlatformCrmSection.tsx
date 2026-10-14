@@ -11,14 +11,14 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import functionUrls from '../../../backend/func2url.json';
 import PlatformCrmEventsCard from './PlatformCrmEventsCard';
-import { CrmReference, PlatformCrmEvent, PlatformCrmSettings, fieldOptions } from './platformCrmTypes';
+import { CrmReference, MESSENGER_CHANNELS, PlatformCrmEvent, PlatformCrmSettings, fieldOptions } from './platformCrmTypes';
 
 const api = (functionUrls as Record<string, string>)['platform-settings'];
 const NONE = '__none__';
 
 const EMPTY: PlatformCrmSettings = {
   webhook_url: '', is_enabled: false, entity: 'deal', stage_id: null, phone_field: 'contact.PHONE',
-  phone_field_type: 'crm_multifield', phone_to_contact: true, channel_field: null, channel_field_type: null,
+  phone_field_type: 'crm_multifield', phone_to_contact: true, channel_field: null, channel_field_type: null, channel_map: {},
   inn_field: 'requisite', inn_field_type: null, title_template: 'Регистрация в Сверке: {name}'
 };
 
@@ -57,7 +57,7 @@ const AdminPlatformCrmSection = () => {
       .then((r) => r.json())
       .then((data) => {
         if (!data.success) return;
-        setForm({ ...EMPTY, ...data.crm, webhook_url: data.crm.webhook_url || '' });
+        setForm({ ...EMPTY, ...data.crm, webhook_url: data.crm.webhook_url || '', channel_map: data.crm.channel_map || {} });
         setEvents(data.events || []);
         setPending(data.pending || 0);
         if (data.crm.webhook_url) loadReference(data.crm.webhook_url);
@@ -85,6 +85,17 @@ const AdminPlatformCrmSection = () => {
     (f) => f.custom && ['string', 'enumeration'].includes(f.type)), [ref, form.entity]);
   const innOptions = useMemo(() => fieldOptions(ref, ['company'], (f) => f.custom && f.type === 'string'), [ref]);
 
+  const channelField = useMemo(() => {
+    if (!form.channel_field || !ref) return null;
+    const [obj, code] = form.channel_field.split('.');
+    return (ref.fields[obj as keyof CrmReference['fields']] || []).find((f) => f.code === code) || null;
+  }, [ref, form.channel_field]);
+
+  const autoMatch = (label: string) =>
+    channelField?.items?.find((i) => i.label.trim().toLowerCase() === label.toLowerCase())?.value ||
+    channelField?.items?.find((i) => i.label.toLowerCase().includes(label.toLowerCase()))?.value ||
+    '';
+
   const typeOf = (value: string | null) =>
     [...phoneOptions, ...channelOptions, ...innOptions].find((o) => o.value === value)?.type || null;
 
@@ -99,6 +110,9 @@ const AdminPlatformCrmSection = () => {
           action: 'save_crm', requester_user_id: user.user_id, ...form,
           phone_field_type: typeOf(form.phone_field) || (form.phone_field.endsWith('.PHONE') ? 'crm_multifield' : null),
           channel_field_type: typeOf(form.channel_field),
+          channel_map: channelField?.type === 'enumeration'
+            ? Object.fromEntries(MESSENGER_CHANNELS.map((m) => [m.key, form.channel_map?.[m.key] ?? autoMatch(m.label)]).filter(([, v]) => v))
+            : {},
           inn_field_type: typeOf(form.inn_field)
         })
       });
@@ -231,14 +245,38 @@ const AdminPlatformCrmSection = () => {
             </div>
             <div className="space-y-1.5">
               <Label>Поле «Канал коммуникации»</Label>
-              <Select value={form.channel_field || NONE} onValueChange={(v) => set({ channel_field: v === NONE ? null : v })} disabled={!ref}>
+              <Select value={form.channel_field || NONE} onValueChange={(v) => set({ channel_field: v === NONE ? null : v, channel_map: {} })} disabled={!ref}>
                 <SelectTrigger><SelectValue placeholder="Не передавать" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>Не передавать</SelectItem>
                   {channelOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Куда пришёл код при регистрации: Telegram, MAX, WhatsApp, SMS. Для списка — вариант с таким же названием</p>
+              {channelField?.type === 'enumeration' && channelField.items?.length ? (
+                <div className="space-y-2 rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Какое значение списка ставить для мессенджера, куда пришёл код</p>
+                  {MESSENGER_CHANNELS.map((m) => {
+                    const value = form.channel_map?.[m.key] ?? autoMatch(m.label);
+                    return (
+                      <div key={m.key} className="grid grid-cols-[90px_1fr] items-center gap-2">
+                        <span className="text-sm text-foreground">{m.label}</span>
+                        <Select
+                          value={value || NONE}
+                          onValueChange={(v) => set({ channel_map: { ...form.channel_map, [m.key]: v === NONE ? '' : v } })}
+                        >
+                          <SelectTrigger className="h-9"><SelectValue placeholder="Не заполнять" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NONE}>Не заполнять</SelectItem>
+                            {channelField.items!.map((i) => <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Куда пришёл код при регистрации: Telegram, WhatsApp, MAX. В текстовое поле пишется название мессенджера</p>
+              )}
             </div>
           </div>
 
