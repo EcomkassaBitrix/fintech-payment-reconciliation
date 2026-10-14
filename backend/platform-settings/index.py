@@ -659,6 +659,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                  'events': platform_crm.recent_events(cur), 'pending': platform_crm.pending_count(cur)})
 
         if method == 'POST' and body.get('action') == 'crm_retry':
+            crm_settings = platform_crm.load_settings(cur)
+            if not crm_settings.get('is_enabled') or not crm_settings.get('webhook_url'):
+                return respond(400, {'error': 'Передача в CRM выключена — включите её и сохраните настройки'})
             if body.get('event_id'):
                 platform_crm.retry_event(cur, int(body['event_id']))
                 conn.commit()

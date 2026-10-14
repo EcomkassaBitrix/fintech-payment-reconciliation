@@ -139,18 +139,30 @@ const AdminPlatformCrmSection = () => {
   const retry = async (eventId?: number) => {
     if (!user) return;
     setBusy(true);
+    let done = 0;
+    let failed = 0;
     try {
-      const res = await fetch(api, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'crm_retry', requester_user_id: user.user_id, event_id: eventId })
-      });
-      const data = await res.json();
-      if (data.success) {
+      for (let round = 0; round < 30; round += 1) {
+        const res = await fetch(api, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'crm_retry', requester_user_id: user.user_id, event_id: round === 0 ? eventId : undefined })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          toast({ title: 'Не отправлено', description: data.error, variant: 'destructive' });
+          return;
+        }
         setEvents(data.events || []);
         setPending(data.pending || 0);
-        toast({ title: `Передано: ${data.processed?.done || 0}, с ошибкой: ${data.processed?.failed || 0}` });
+        done += data.processed?.done || 0;
+        failed += data.processed?.failed || 0;
+        const progressed = (data.processed?.done || 0) + (data.processed?.failed || 0) > 0;
+        if (eventId || !data.pending || !progressed) break;
       }
+      toast({ title: `Передано: ${done}, с ошибкой: ${failed}` });
+    } catch {
+      toast({ title: 'Ошибка подключения', variant: 'destructive' });
     } finally {
       setBusy(false);
     }
