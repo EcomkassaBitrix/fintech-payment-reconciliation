@@ -39,7 +39,8 @@ export interface PlatformCrmSettings {
 export const MESSENGER_CHANNELS = [
   { key: 'telegram', label: 'Telegram' },
   { key: 'whatsapp', label: 'WhatsApp' },
-  { key: 'max', label: 'MAX' }
+  { key: 'max', label: 'MAX' },
+  { key: 'email', label: 'Почта' }
 ];
 
 export interface PlatformCrmEvent {

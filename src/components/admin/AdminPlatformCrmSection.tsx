@@ -91,10 +91,15 @@ const AdminPlatformCrmSection = () => {
     return (ref.fields[obj as keyof CrmReference['fields']] || []).find((f) => f.code === code) || null;
   }, [ref, form.channel_field]);
 
-  const autoMatch = (label: string) =>
-    channelField?.items?.find((i) => i.label.trim().toLowerCase() === label.toLowerCase())?.value ||
-    channelField?.items?.find((i) => i.label.toLowerCase().includes(label.toLowerCase()))?.value ||
-    '';
+  const autoMatch = (label: string) => {
+    const names = label === 'Почта' ? ['почта', 'email', 'e-mail', 'mail'] : [label.toLowerCase()];
+    const items = channelField?.items || [];
+    return (
+      items.find((i) => names.includes(i.label.trim().toLowerCase()))?.value ||
+      items.find((i) => names.some((n) => i.label.toLowerCase().includes(n)))?.value ||
+      ''
+    );
+  };
 
   const typeOf = (value: string | null) =>
     [...phoneOptions, ...channelOptions, ...innOptions].find((o) => o.value === value)?.type || null;
