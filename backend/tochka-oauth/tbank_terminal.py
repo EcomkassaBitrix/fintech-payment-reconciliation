@@ -1,4 +1,5 @@
 import hashlib
+import re
 import json
 import urllib.error
 import urllib.request
@@ -57,12 +58,16 @@ def save(cur, body: Dict[str, Any], user_id) -> Optional[str]:
     taxation = body.get('taxation') if body.get('taxation') in TAXATIONS else 'usn_income'
     vat = body.get('vat') if body.get('vat') in VATS else 'none'
     config = {
-        'receipt_enabled': bool(body.get('receipt_enabled')), 'taxation': taxation, 'vat': vat,
+        'receipt_enabled': body.get('receipt_enabled') is not False, 'taxation': taxation, 'vat': vat,
         'payment_method': body.get('payment_method') if body.get('payment_method') in PAYMENT_METHODS else 'full_payment',
         'payment_object': body.get('payment_object') if body.get('payment_object') in PAYMENT_OBJECTS else 'service',
         'ffd': '1.05' if body.get('ffd') == '1.05' else '1.2',
         'measurement_unit': (str(body.get('measurement_unit') or 'шт').strip()[:16] or 'шт'),
+        'receipt_email': (str(body.get('receipt_email') or '').strip()[:64] or None),
+        'receipt_email_copy': bool(body.get('receipt_email_copy')),
     }
+    if config['receipt_email'] and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', config['receipt_email']):
+        return 'Проверьте почту для чеков'
     cur.execute(f'''
         UPDATE {SCHEMA}.platform_payment_providers SET terminal_key = %s, terminal_password = %s,
             is_test = %s, config = %s, connected_at = NOW(), connected_by = %s, updated_at = NOW()

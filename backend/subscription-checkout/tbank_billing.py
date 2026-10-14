@@ -84,12 +84,17 @@ def receipt(terminal: Dict[str, Any], title: str, amount_kop: int, phone: Option
     r: Dict[str, Any] = {'Taxation': cfg.get('taxation') or 'usn_income', 'Items': [item]}
     if (cfg.get('ffd') or '1.2') == '1.2':
         r['FfdVersion'] = '1.2'
+    digits = ''.join(ch for ch in (phone or '') if ch.isdigit())
     if email:
         r['Email'] = email
-    elif phone:
-        digits = ''.join(ch for ch in phone if ch.isdigit())
-        if digits:
-            r['Phone'] = '+' + digits
+    elif digits:
+        r['Phone'] = '+' + digits
+    # Касса требует контакт покупателя (тег 1008): если у плательщика нет ни почты, ни телефона -
+    # чек уходит на почту из настроек терминала.
+    if not r.get('Email') and not r.get('Phone') and cfg.get('receipt_email'):
+        r['Email'] = cfg['receipt_email']
+    if cfg.get('receipt_email') and cfg.get('receipt_email_copy'):
+        r['EmailCompany'] = cfg['receipt_email']
     return r
 
 

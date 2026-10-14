@@ -13,6 +13,8 @@ export interface TbankConfig {
   payment_object?: string;
   ffd?: string;
   measurement_unit?: string;
+  receipt_email?: string | null;
+  receipt_email_copy?: boolean;
 }
 
 interface TbankTerminalFormProps {
@@ -61,7 +63,9 @@ const selectClass = 'h-10 w-full rounded-md border border-input bg-background px
 const TbankTerminalForm = ({ terminalKey, config, busy, onSave, onCancel }: TbankTerminalFormProps) => {
   const [key, setKey] = useState(terminalKey || '');
   const [password, setPassword] = useState('');
-  const [receipt, setReceipt] = useState(Boolean(config.receipt_enabled));
+  const [receipt, setReceipt] = useState(config.receipt_enabled !== false);
+  const [receiptEmail, setReceiptEmail] = useState(config.receipt_email || '');
+  const [receiptCopy, setReceiptCopy] = useState(Boolean(config.receipt_email_copy));
   const [taxation, setTaxation] = useState(config.taxation || 'usn_income');
   const [vat, setVat] = useState(config.vat || 'none');
   const [paymentMethod, setPaymentMethod] = useState(config.payment_method || 'full_payment');
@@ -131,6 +135,17 @@ const TbankTerminalForm = ({ terminalKey, config, busy, onSave, onCancel }: Tban
               <option value="1.05">1.05</option>
             </select>
           </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Почта компании для чеков</Label>
+            <Input type="email" value={receiptEmail} onChange={(e) => setReceiptEmail(e.target.value.trim())} placeholder="chek@s-verka.ru" />
+            <label className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
+              <Switch checked={receiptCopy} onCheckedChange={setReceiptCopy} />
+              Присылать копию каждого чека на эту почту
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Касса требует контакт покупателя. Чек уходит на почту или телефон клиента, а если их нет — на эту почту.
+            </p>
+          </div>
           <p className="text-xs text-muted-foreground sm:col-span-2">
             В чеке одна позиция: «Подписка на сервис «Сверка», тариф «…», 1 мес.» на сумму оплаты.
           </p>
@@ -148,7 +163,8 @@ const TbankTerminalForm = ({ terminalKey, config, busy, onSave, onCancel }: Tban
           onClick={() =>
             onSave({
               action: 'save_terminal', terminal_key: key, terminal_password: password, receipt_enabled: receipt, taxation, vat,
-              payment_method: paymentMethod, payment_object: paymentObject, ffd, measurement_unit: 'шт'
+              payment_method: paymentMethod, payment_object: paymentObject, ffd, measurement_unit: 'шт',
+              receipt_email: receiptEmail || null, receipt_email_copy: receiptCopy
             })
           }
         >
