@@ -165,6 +165,39 @@ def mark_canceled(cur, pay: Dict[str, Any], status: str) -> None:
                     updated_at = NOW() WHERE id = %s''', (f'Отменён ({status})', pay['id']))
 
 
+DECLINE_CODES = {
+    '1051': 'Недостаточно средств на карте',
+    '1057': 'Банк, выпустивший карту, запретил такую операцию',
+    '1054': 'Истёк срок действия карты',
+    '1082': 'Неверный CVC или срок действия карты',
+    '1089': 'Банк, выпустивший карту, отклонил оплату',
+    '1014': 'Неверный номер карты',
+    '1013': 'Неверная сумма операции',
+    '1019': 'Платёж отклонён по соображениям безопасности',
+    '1030': 'Ошибка при оплате — попробуйте ещё раз',
+    '1034': 'Не пройдена проверка 3‑D Secure',
+    '1041': 'Карта заблокирована',
+    '1043': 'Карта заблокирована',
+    '1061': 'Превышен лимит по карте',
+    '1065': 'Превышен лимит операций по карте',
+    '1091': 'Банк, выпустивший карту, недоступен — попробуйте позже',
+    '1096': 'Системная ошибка банка — попробуйте позже',
+}
+
+
+def decline_reason(status: str, code: Any) -> str:
+    code = str(code or '0')
+    if code in DECLINE_CODES:
+        return DECLINE_CODES[code]
+    if status == 'DEADLINE_EXPIRED':
+        return 'Время на оплату истекло'
+    if status == 'AUTH_FAIL':
+        return 'Не пройдена проверка 3‑D Secure'
+    if status == 'ATTEMPTS_EXPIRED':
+        return 'Превышено число попыток оплаты'
+    return 'Банк отклонил оплату' + (f' (код {code})' if code != '0' else '')
+
+
 def apply_state(cur, pay: Dict[str, Any], data: Dict[str, Any]) -> str:
     status = str(data.get('Status') or '')
     if status == 'CONFIRMED':
@@ -179,7 +212,7 @@ def apply_state(cur, pay: Dict[str, Any], data: Dict[str, Any]) -> str:
         mark_canceled(cur, pay, status)
         return 'canceled'
     if status in FAILED_STATUSES:
-        mark_failed(cur, pay, f"Оплата не прошла ({status}{', код ' + str(data.get('ErrorCode')) if str(data.get('ErrorCode') or '0') != '0' else ''})")
+        mark_failed(cur, pay, decline_reason(status, data.get('ErrorCode')))
         return 'failed'
     return pay['status']
 
@@ -256,11 +289,17 @@ def refresh(cur, company_id: int, payment_id: int) -> Optional[Dict[str, Any]]:
             if data and data.get('Success'):
                 apply_state(cur, pay, data)
                 pay = _load_payment(cur, 'p.id = %s', payment_id)
-    cur.execute(f'SELECT refund_amount, is_recurring FROM {SCHEMA}.subscription_payments WHERE id = %s', (pay['id'],))
-    extra = cur.fetchone() or (None, False)
+    cur.execute(f'''
+        SELECT p.refund_amount, p.is_recurring,
+               EXISTS (SELECT 1 FROM {SCHEMA}.subscription_cards c WHERE c.company_id = p.company_id AND c.is_active = true
+                       AND c.created_at >= p.created_at - INTERVAL '1 minute')
+        FROM {SCHEMA}.subscription_payments p WHERE p.id = %s
+    ''', (pay['id'],))
+    extra = cur.fetchone() or (None, False, False)
     return {'id': pay['id'], 'status': pay['status'], 'tariff_name': pay['tariff_name'],
             'period_end': pay['period_end'], 'amount': float(pay['amount']), 'error': pay['error'],
-            'refund_amount': float(extra[0]) if extra[0] is not None else None, 'is_recurring': extra[1]}
+            'refund_amount': float(extra[0]) if extra[0] is not None else None, 'is_recurring': extra[1],
+            'card_saved': bool(extra[2]) and pay['status'] == 'paid'}
 
 
 def cancel_payment(cur, terminal, payment_id: int, user_id=None, amount: Optional[float] = None) -> Dict[str, Any]:

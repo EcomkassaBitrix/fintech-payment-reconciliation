@@ -5,6 +5,8 @@ import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import functionUrls from '../../../backend/func2url.json';
+import PaymentResultDialog, { PaymentResultState } from '@/components/subscription/PaymentResultDialog';
+import { formatLongDate } from '@/lib/subscription';
 
 const urls = functionUrls as Record<string, string>;
 const checkout = urls['subscription-checkout'];
@@ -66,6 +68,7 @@ const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
   const [last, setLast] = useState<TestState | null>(null);
   const [scenario, setScenario] = useState('t1');
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const [result, setResult] = useState<PaymentResultState | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -116,7 +119,30 @@ const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
     if (!tp) return;
     params.delete('tp');
     window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
-    setTimeout(() => checkStatus(Number(tp)), 1500);
+    setResult({ kind: 'checking' });
+    let attempts = 0;
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const d = await call({ action: 'test_status', payment_id: Number(tp) });
+        const pay = d.payment;
+        if (pay) setLast(pay);
+        if (pay?.status === 'paid') {
+          setResult({ kind: 'success', tariffName: pay.tariff_name, amount: pay.amount,
+            until: pay.period_end ? formatLongDate(pay.period_end) : undefined, cardSaved: Boolean(pay.card_saved) });
+          return;
+        }
+        if (pay?.status === 'failed' || pay?.status === 'canceled') {
+          setResult({ kind: 'fail', reason: pay.error });
+          return;
+        }
+      } catch {
+        /* повторим */
+      }
+      if (attempts < 8) setTimeout(poll, 2500);
+      else setResult({ kind: 'pending' });
+    };
+    setTimeout(poll, 1000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -307,6 +333,7 @@ const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
         ))}
         <p>Все тестовые платежи с отметкой «тест» видны в таблице «Транзакции» ниже.</p>
       </div>
+      <PaymentResultDialog state={result} onClose={() => setResult(null)} />
     </div>
   );
 };

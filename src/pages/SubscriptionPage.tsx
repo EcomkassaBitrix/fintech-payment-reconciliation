@@ -13,6 +13,7 @@ import {
 import { AutoPay, CurrentPlan, Payment, Period, PlanTariff } from '@/components/subscription/subscriptionTypes';
 import AutoPayCard from '@/components/subscription/AutoPayCard';
 import LinkedCardRow from '@/components/subscription/LinkedCardRow';
+import PaymentResultDialog, { PaymentResultState } from '@/components/subscription/PaymentResultDialog';
 import CurrentPlanCard from '@/components/subscription/CurrentPlanCard';
 import TariffPlansSection from '@/components/subscription/TariffPlansSection';
 import CheckoutPanel from '@/components/subscription/CheckoutPanel';
@@ -43,6 +44,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
   const [autopay, setAutopay] = useState<AutoPay | null>(null);
   const [autoRenew, setAutoRenew] = useState(true);
   const [autopayBusy, setAutopayBusy] = useState(false);
+  const [result, setResult] = useState<PaymentResultState | null>(null);
 
   useEffect(() => {
     if (paid || payError) resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -74,6 +76,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
     const rest = params.toString();
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`);
     let attempts = 0;
+    setResult({ kind: 'checking' });
     const poll = async () => {
       attempts += 1;
       try {
@@ -87,13 +90,14 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
         if (pay?.status === 'paid') {
           const until = formatLongDate(pay.period_end);
           setPaid({ title: `Оплата принята, тариф «${pay.tariff_name}» оплачен`, until });
-          toast({ title: 'Оплата прошла', description: `Срок действия: до ${until}` });
+          setResult({ kind: 'success', tariffName: pay.tariff_name, amount: pay.amount, until, cardSaved: Boolean(pay.card_saved) });
           await refreshCompanies();
           load();
           return;
         }
-        if (pay?.status === 'failed') {
+        if (pay?.status === 'failed' || pay?.status === 'canceled') {
           setPayError(pay.error || 'Банк отклонил оплату');
+          setResult({ kind: 'fail', reason: pay.error });
           load();
           return;
         }
@@ -103,6 +107,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
       if (attempts < 8) setTimeout(poll, 2500);
       else {
         setPayError('Банк ещё не подтвердил оплату. Если деньги списались, тариф включится автоматически в течение нескольких минут.');
+        setResult({ kind: 'pending' });
         load();
       }
     };
@@ -321,6 +326,15 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
             <PaymentResultAndHistory paid={paid} payError={payError} resultRef={resultRef} payments={payments} />
           </div>
         )}
+      <PaymentResultDialog
+        state={result}
+        onClose={() => setResult(null)}
+        onRetry={() => {
+          setResult(null);
+          setPayError(null);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      />
     </div>
   );
 };
