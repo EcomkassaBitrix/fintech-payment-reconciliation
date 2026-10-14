@@ -12,6 +12,7 @@ import {
 } from '@/components/profile/DowngradeKeepPicker';
 import { AutoPay, CurrentPlan, Payment, Period, PlanTariff } from '@/components/subscription/subscriptionTypes';
 import AutoPayCard from '@/components/subscription/AutoPayCard';
+import LinkedCardRow from '@/components/subscription/LinkedCardRow';
 import CurrentPlanCard from '@/components/subscription/CurrentPlanCard';
 import TariffPlansSection from '@/components/subscription/TariffPlansSection';
 import CheckoutPanel from '@/components/subscription/CheckoutPanel';
@@ -258,7 +259,17 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
               onRenew={setSelected}
             />
 
-            {provider === 'tbank' && autopay && !isTrial && (
+            {autopay?.card && (
+              <LinkedCardRow
+                pan={autopay.card.pan}
+                provider={autopay.card.provider}
+                canManage={canPay}
+                busy={autopayBusy}
+                onRemove={() => updateAutopay({ action: 'remove_card' }, 'Карта отключена')}
+              />
+            )}
+
+            {provider === 'tbank' && autopay?.card && !isTrial && (
               <AutoPayCard
                 autopay={autopay}
                 endDate={endDate}

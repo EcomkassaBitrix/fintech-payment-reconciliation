@@ -29,7 +29,7 @@ export interface Payment {
 export interface AutoPay {
   auto_renew: boolean;
   period: string;
-  card: { pan: string; exp_date: string | null } | null;
+  card: { pan: string; exp_date: string | null; provider?: string } | null;
 }
 
 export const PAYMENT_METHODS: Record<string, { label: string; icon: string }> = {

@@ -32,7 +32,7 @@ def member_role(cur, company_id, user_id):
 
 def autopay_view(cur, company_id) -> Dict[str, Any]:
     cur.execute(f'''
-        SELECT s.auto_renew, s.renew_period, c.pan, c.exp_date
+        SELECT s.auto_renew, s.renew_period, c.pan, c.exp_date, c.provider_slug
         FROM {SCHEMA}.subscriptions s
         LEFT JOIN {SCHEMA}.subscription_cards c ON c.id = s.card_id AND c.is_active = true
         WHERE s.company_id = %s
@@ -41,7 +41,7 @@ def autopay_view(cur, company_id) -> Dict[str, Any]:
     if not r:
         return {'auto_renew': False, 'period': 'month', 'card': None}
     return {'auto_renew': bool(r[0]) and bool(r[2]), 'period': r[1] or 'month',
-            'card': {'pan': r[2], 'exp_date': r[3]} if r[2] else None}
+            'card': {'pan': r[2], 'exp_date': r[3], 'provider': r[4] or 'tbank'} if r[2] else None}
 
 
 def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
@@ -226,6 +226,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if not can_pay:
                 return respond(403, {'error': 'Управлять оплатой может только владелец или админ компании'})
             if action == 'remove_card':
+                cur.execute(f'''SELECT card_id, customer_key FROM {SCHEMA}.subscription_cards
+                                WHERE company_id = %s AND is_active = true AND provider_slug = 'tbank' ''', (company_id,))
+                card = cur.fetchone()
+                bank_terminal = tbank_billing.load_terminal(cur, only_enabled=False)
+                if card and card[0] and card[1] and bank_terminal:
+                    tbank_billing.call(bank_terminal, 'RemoveCard', {'CardId': card[0], 'CustomerKey': card[1]})
                 cur.execute(f'''UPDATE {SCHEMA}.subscription_cards SET is_active = false, updated_at = NOW()
                                 WHERE company_id = %s AND is_active = true''', (company_id,))
                 cur.execute(f'''UPDATE {SCHEMA}.subscriptions SET auto_renew = false, card_id = NULL,
