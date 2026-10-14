@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
@@ -91,8 +91,11 @@ const ReconciliationPage = ({ onOpenTransactions, onConnectIntegration }: Reconc
   const tileLocked = (categorySlug: string, count: number) =>
     !!connectedCategories && !connectedCategories.has(categorySlug) && count === 0;
 
+  const statsRequestRef = useRef(0);
   const fetchStats = useCallback(async () => {
     if (!companyId) return;
+    const requestId = ++statsRequestRef.current;
+    const isStale = () => requestId !== statsRequestRef.current;
     setIsLoading(true);
     try {
       const params = new URLSearchParams({
@@ -101,7 +104,8 @@ const ReconciliationPage = ({ onOpenTransactions, onConnectIntegration }: Reconc
         date_to: toDateParam(dateTo)
       });
       const response = await fetch(`${functionUrls['reconciliation-stats']}?${params.toString()}`);
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
+      if (isStale()) return;
 
       if (response.ok && result.success) {
         setData(result);
@@ -113,13 +117,14 @@ const ReconciliationPage = ({ onOpenTransactions, onConnectIntegration }: Reconc
         });
       }
     } catch (error) {
+      if (isStale()) return;
       toast({
         title: 'Ошибка подключения',
         description: 'Проверьте интернет-соединение',
         variant: 'destructive'
       });
     } finally {
-      setIsLoading(false);
+      if (!isStale()) setIsLoading(false);
     }
   }, [companyId, dateFrom, dateTo, toast]);
 

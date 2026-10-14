@@ -25,6 +25,37 @@ const isPublicPage = () => {
 
 let redirecting = false;
 
+const RETRY_DELAYS_MS = [700, 1500, 3000];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Кратковременная перегрузка базы («rate limit exceeded») или сбой шлюза
+// функций. Шлюз при падении отвечает без CORS-заголовков, поэтому браузер
+// видит это как обрыв сети («Load failed») - такие запросы тоже повторяем.
+const isTransientResponse = async (response: Response) => {
+  if ([502, 503, 504, 429].includes(response.status)) return true;
+  if (response.status !== 500) return false;
+  const text = await response.clone().text().catch(() => '');
+  return /rate limit|QueryCanceled|timeout/i.test(text);
+};
+
+const fetchWithRetry = async (
+  originalFetch: typeof fetch,
+  input: RequestInfo | URL,
+  init: RequestInit,
+  canRetry: boolean
+): Promise<Response> => {
+  for (let attempt = 0; ; attempt++) {
+    const last = !canRetry || attempt >= RETRY_DELAYS_MS.length || init.signal?.aborted;
+    try {
+      const response = await originalFetch(input, init);
+      if (last || !(await isTransientResponse(response))) return response;
+    } catch (error) {
+      if (last || (error instanceof DOMException && error.name === 'AbortError')) throw error;
+    }
+    await sleep(RETRY_DELAYS_MS[attempt]);
+  }
+};
+
 export const installSessionFetch = () => {
   const originalFetch = window.fetch.bind(window);
 
@@ -36,7 +67,8 @@ export const installSessionFetch = () => {
     const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
     if (token && !headers.has('X-Session-Id')) headers.set('X-Session-Id', token);
 
-    const response = await originalFetch(input, { ...init, headers });
+    const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    const response = await fetchWithRetry(originalFetch, input, { ...init, headers }, method === 'GET');
 
     if (response.status === 401 && !redirecting) {
       const data = await response.clone().json().catch(() => null);
