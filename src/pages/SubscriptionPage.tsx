@@ -241,13 +241,23 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
 
   return (
     <div className="max-w-5xl space-y-6 animate-fade-in">
-      <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="mb-2 text-2xl sm:text-3xl font-display font-bold text-foreground">Подписка</h2>
           <p className="text-muted-foreground">
             {currentCompany ? 'Тариф, оплата и история платежей' : 'Компания не выбрана'}
           </p>
         </div>
+        {currentCompany && canCoupon && (
+          <PromoCodeField
+            companyId={currentCompany.id}
+            canApply
+            onApplied={async () => {
+              await refreshCompanies();
+              load();
+            }}
+          />
+        )}
       </div>
 
         {currentCompany && (
@@ -268,18 +278,6 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
                 setSelected(null);
                 setPlanSheet(true);
               }}
-              promo={
-                canCoupon ? (
-                  <PromoCodeField
-                    companyId={currentCompany.id}
-                    canApply
-                    onApplied={async () => {
-                      await refreshCompanies();
-                      load();
-                    }}
-                  />
-                ) : null
-              }
             />
 
             {autopay?.card && (
