@@ -47,8 +47,8 @@ def normalize_tx(external_id, operation_date, amount, direction, counterparty_na
 def get_tbank_access(cur, company_id: int) -> Dict[str, Any]:
     '''
     Достаёт токен доступа T-Business ID для компании, если владелец уже подтвердил
-    доступ через Т-Бизнес. Если подтверждения нет - работаем в режиме песочницы
-    с демонстрационными данными, чтобы интеграцию можно было проверить уже сейчас.
+    доступ через Т-Бизнес (токен или песочница). Если доступа нет - пустой словарь:
+    выписку не грузим, чтобы демо-операции не попали в реальную компанию.
     '''
     cur.execute('''
         SELECT access_token, is_sandbox
@@ -57,10 +57,10 @@ def get_tbank_access(cur, company_id: int) -> Dict[str, Any]:
     ''', (company_id,))
     row = cur.fetchone()
 
-    if row:
+    if row and row[0]:
         return {'access_token': row[0], 'is_sandbox': row[1]}
 
-    return {'access_token': '', 'is_sandbox': True}
+    return {}
 
 
 def fetch_tbank_account_statement(cur, integration_id: int, company_id: int, config: Dict[str, Any],
@@ -74,6 +74,8 @@ def fetch_tbank_account_statement(cur, integration_id: int, company_id: int, con
     Если ключевые слова не заданы - загружаются все операции без фильтрации.
     '''
     access = get_tbank_access(cur, company_id)
+    if not access:
+        return None
     account_number = config.get('account_number', '')
     keywords = get_purpose_keywords(config)
 

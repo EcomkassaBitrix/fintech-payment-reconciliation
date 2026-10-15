@@ -28,6 +28,7 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
   const [tokenInput, setTokenInput] = useState('');
   const [tokenError, setTokenError] = useState('');
   const [isSavingToken, setIsSavingToken] = useState(false);
+  const [showToken, setShowToken] = useState(false);
 
   const checkConnection = async () => {
     setIsChecking(true);
@@ -52,24 +53,6 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
     checkConnection();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
-
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    try {
-      const response = await fetch(
-        `${functionUrls['tbank-oauth-callback']}?action=authorize_url&company_id=${companyId}&redirect_uri=${encodeURIComponent(window.location.href)}`
-      );
-      const data = await response.json();
-
-      if (data.sandbox) {
-        await checkConnection();
-      } else if (data.authorize_url) {
-        window.location.href = data.authorize_url;
-      }
-    } finally {
-      setIsConnecting(false);
-    }
-  };
 
   const postAction = async (payload: Record<string, unknown>) => {
     const response = await fetch(functionUrls['tbank-oauth-callback'], {
@@ -114,18 +97,61 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
     }
   };
 
+  const methodPicker = (
+    <div>
+      <Label>Способ подключения</Label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1.5">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-primary bg-primary/5 text-left">
+          <Icon name="KeyRound" size={16} className="text-primary" />
+          <div>
+            <div className="text-sm font-medium">Токен</div>
+            <div className="text-xs text-muted-foreground">Доступно сейчас</div>
+          </div>
+        </div>
+        <div
+          aria-disabled="true"
+          title="Партнёрская интеграция с Т-Банком скоро будет доступна"
+          className="flex items-center gap-2 p-3 rounded-lg border border-border text-left opacity-60 cursor-not-allowed"
+        >
+          <Icon name="Lock" size={16} className="text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium flex items-center gap-1.5">
+              Партнёрская интеграция
+              <span className="text-[10px] uppercase tracking-wide rounded-full border border-border px-1.5 py-px text-muted-foreground">
+                Скоро
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground">Вход через Т-Бизнес без токена</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const tokenForm = (
-    <div className="space-y-2 rounded-lg border border-border p-3">
+    <div className="space-y-1.5">
       <Label htmlFor="tbank_token">Токен Т-Бизнес</Label>
       <div className="flex gap-2">
-        <Input
-          id="tbank_token"
-          type="password"
-          autoComplete="off"
-          placeholder="Вставьте токен"
-          value={tokenInput}
-          onChange={(e) => { setTokenInput(e.target.value); setTokenError(''); }}
-        />
+        <div className="relative flex-1">
+          <Input
+            id="tbank_token"
+            type={showToken ? 'text' : 'password'}
+            autoComplete="off"
+            placeholder="Вставьте токен"
+            value={tokenInput}
+            onChange={(e) => { setTokenInput(e.target.value); setTokenError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveToken(); } }}
+            className="pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowToken((v) => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            tabIndex={-1}
+          >
+            <Icon name={showToken ? 'EyeOff' : 'Eye'} size={16} />
+          </button>
+        </div>
         <Button type="button" onClick={handleSaveToken} disabled={isSavingToken}>
           {isSavingToken && <Icon name="Loader2" size={14} className="animate-spin mr-2" />}
           Подключить
@@ -144,7 +170,7 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
         <Label>Номер расчётного счёта</Label>
         <div className="h-10 flex items-center text-sm text-muted-foreground">
           <Icon name="Loader2" size={14} className="animate-spin mr-2" />
-          Проверяем подтверждение через Т-Бизнес...
+          Проверяем подключение к Т-Бизнес...
         </div>
       </div>
     );
@@ -152,13 +178,15 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
 
   if (isConnected) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
+        {methodPicker}
+        <div className="space-y-2">
         <Label>Номер расчётного счёта</Label>
         <div className="flex items-center gap-2 text-xs text-success mb-1">
           <Icon name="ShieldCheck" size={14} />
           {isSandbox
             ? `Демо-режим песочницы — счета ${companyName || 'компании'} подтягиваются автоматически`
-            : `Доступ подтверждён через Т-Бизнес (${companyName})`}
+            : `Токен подключён${companyName ? ` — ${companyName}` : ''}`}
         </div>
         <Select value={accountNumber} onValueChange={onAccountNumberChange}>
           <SelectTrigger>
@@ -172,8 +200,9 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
             ))}
           </SelectContent>
         </Select>
+        </div>
         {isSandbox ? (
-          <div className="pt-2 space-y-2">
+          <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
               Сейчас загружаются тестовые операции банка. Чтобы грузить платежи с вашего счёта, подключите свой токен
             </p>
@@ -195,27 +224,8 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
 
   return (
     <div className="space-y-3">
-      <div>
-        <Label htmlFor="account_number">Номер расчётного счёта</Label>
-        <Input
-          id="account_number"
-          placeholder="40702810110011000000"
-          value={accountNumber}
-          onChange={(e) => onAccountNumberChange(e.target.value)}
-        />
-        <p className="text-xs text-muted-foreground mt-1">
-          Введите вручную или подключите токен Т-Бизнес — тогда счета подтянутся автоматически
-        </p>
-      </div>
+      {methodPicker}
       {tokenForm}
-      <Button type="button" variant="ghost" size="sm" onClick={handleConnect} disabled={isConnecting}>
-        {isConnecting ? (
-          <Icon name="Loader2" size={14} className="animate-spin mr-2" />
-        ) : (
-          <Icon name="Link" size={14} className="mr-2" />
-        )}
-        Попробовать на демо-данных
-      </Button>
     </div>
   );
 };
