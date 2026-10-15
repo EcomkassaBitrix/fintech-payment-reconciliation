@@ -4,6 +4,7 @@ import AccessUsersSection from '@/components/access/AccessUsersSection';
 import useAccessUsers from '@/components/access/useAccessUsers';
 import useInviteActions from '@/components/access/useInviteActions';
 import Icon from '@/components/ui/icon';
+import SupportAccessCard from '@/components/settings/SupportAccessCard';
 
 const AccessManagement = () => {
   const { user, currentCompany, refreshCompanies } = useAuth();
@@ -107,6 +108,11 @@ const AccessManagement = () => {
           />
         </div>
       </div>
+
+      {currentCompany && !currentCompany.support_access
+        && ['owner', 'admin'].includes(currentCompany.role_slug) && (
+        <SupportAccessCard companyId={currentCompany.id} timezone={currentCompany.timezone} />
+      )}
 
       <AccessUsersSection
         users={users}

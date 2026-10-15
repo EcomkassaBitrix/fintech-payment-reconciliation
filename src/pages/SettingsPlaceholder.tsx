@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE } from '@/lib/formatDate';
 import functionUrls from '../../backend/func2url.json';
 import { canOpenModule, effectiveModules } from '@/config/modules';
-import SupportAccessCard from '@/components/settings/SupportAccessCard';
 
 const SettingsPlaceholder = () => {
   const { currentCompany, refreshCompanies } = useAuth();
@@ -94,10 +93,7 @@ const SettingsPlaceholder = () => {
           </CardContent>
         </Card>
       )}
-      {currentCompany && !currentCompany.support_access
-        && ['owner', 'admin'].includes(currentCompany.role_slug) && (
-        <SupportAccessCard companyId={currentCompany.id} timezone={currentCompany.timezone} />
-      )}
+
       {!canEditCompany && (
         <p className="text-sm text-muted-foreground">
           Настройки компании доступны владельцу. Личные уведомления — в меню профиля, пункт «Уведомления».
