@@ -6,7 +6,7 @@ export interface AdminSection {
 
 export const ADMIN_SECTIONS: AdminSection[] = [
   { id: 'companies', name: 'Подписки', icon: 'CreditCard' },
-  { id: 'support', name: 'Доступ открыт', icon: 'LifeBuoy' },
+  { id: 'support', name: 'Доступ ТП', icon: 'LifeBuoy' },
   { id: 'roles', name: 'Роли', icon: 'ShieldCheck' },
   { id: 'action_templates', name: 'Шаблоны действий', icon: 'Workflow' },
   { id: 'tariffs', name: 'Тарифы', icon: 'Tag' },
