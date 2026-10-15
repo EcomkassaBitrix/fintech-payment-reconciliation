@@ -181,7 +181,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         conn = psycopg2.connect(os.environ['DATABASE_URL'])
         cur = conn.cursor()
         try:
-            return respond(200, {'success': True, **billing.renew_due(cur, conn)})
+            result = billing.renew_due(cur, conn)
+            renewed = result.get('renewed') or []
+            failed = [r for r in renewed if r['status'] in ('failed', 'canceled')]
+            error = 'pending' if result.get('more') else (
+                'Т‑Банк не подключён' if result.get('skipped') else
+                (f'не списалось: {len(failed)} из {len(renewed)}' if failed else None))
+            cur.execute(f'''
+                INSERT INTO {billing.SCHEMA}.cron_source_runs (source, company_id, tick, item_key, loaded, error, finished_at)
+                VALUES ('subscriptions', 0, %s, '', %s, %s, NOW())
+                ON CONFLICT (source, company_id, item_key) DO UPDATE SET
+                    tick = EXCLUDED.tick, loaded = EXCLUDED.loaded, error = EXCLUDED.error, finished_at = NOW()
+            ''', (str(body.get('cron_tick') or '')[:40], len(renewed) - len(failed), error))
+            conn.commit()
+            return respond(200, {'success': True, **result})
         finally:
             cur.close()
             conn.close()

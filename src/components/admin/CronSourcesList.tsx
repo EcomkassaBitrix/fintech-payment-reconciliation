@@ -64,7 +64,11 @@ const CronSourcesList = ({ sources, values, intervals, onChange, onIntervalChang
                     ? `Не загрузилось ${formatDateTime(src.last_run.finished_at, undefined, true)}: ${src.last_run.error || 'ошибка'}`
                     : `Загрузили ${src.last_run.loaded} ${src.unit} ${formatDateTime(src.last_run.finished_at, undefined, true)}`}
                   {src.last_run.failed > 0 && src.last_run.failed < src.last_run.calls && ` · с ошибкой: ${src.last_run.failed} из ${src.last_run.calls}`}
-                  {src.last_run.pending ? ' · банк ещё формирует выписку, заберём при следующем запуске' : ''}
+                  {src.last_run.pending
+                    ? src.key === 'subscriptions'
+                      ? ' · не все успели, продолжим при следующем запуске'
+                      : ' · банк ещё формирует выписку, заберём при следующем запуске'
+                    : ''}
                 </div>
               )}
               {src.integrations.length > 0 && (

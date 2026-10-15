@@ -55,11 +55,14 @@ CRON_SOURCES = [
      'hint': 'Если клиент задал частоту в настройках интеграции - берётся она'},
     {'key': 'automation', 'unit': 'заданий', 'name': 'Автоматизация и уведомления',
      'hint': 'Очередь сценариев, повторы, рассылка уведомлений, «платежи без чека»'},
+    {'key': 'subscriptions', 'unit': 'списаний', 'name': 'Подписки: автосписание по картам',
+     'hint': 'Продление подписок с включённым автопродлением по сохранённой карте Т‑Банка. «Раз в день» - после полуночи по Москве'},
 ]
 # Частота запуска источника планировщиком (админ выбирает пресет), минуты.
 INTERVAL_PRESETS = {'cron': 0, '1h': 60, '12h': 720, '1d': 1440}
 # По умолчанию - как работало до настройки: банк раз в час, остальное каждый запуск.
-DEFAULT_INTERVALS = {'ecomkassa': 'cron', 'ecomkassa_receipts': 'cron', 'ofd': 'cron', 'bank': '1h', 'automation': 'cron'}
+DEFAULT_INTERVALS = {'ecomkassa': 'cron', 'ecomkassa_receipts': 'cron', 'ofd': 'cron', 'bank': '1h', 'automation': 'cron',
+                     'subscriptions': 'cron'}
 
 
 def source_interval(settings: Dict[str, Any], key: str) -> str:
@@ -111,6 +114,22 @@ def due_companies(cur, source: str, company_ids: List[int], minutes: int) -> Lis
     ''', (source, company_ids, minutes))
     recent = {r[0] for r in cur.fetchall()}
     return [c for c in company_ids if c not in recent]
+
+
+def subscriptions_due(cur, settings: Dict[str, Any]) -> bool:
+    '''Пора ли запускать автосписание: по частоте из настроек; «раз в день» - после полуночи по Москве.
+    Если прошлый запуск не успел всех (error = pending) - продолжаем сразу.'''
+    interval = source_interval(settings, 'subscriptions')
+    if interval == 'cron':
+        return True
+    cur.execute(f'''SELECT finished_at, error FROM {SCHEMA}.cron_source_runs
+                    WHERE source = 'subscriptions' AND company_id = 0 AND item_key = '' ''')
+    row = cur.fetchone()
+    if not row or row[1] == 'pending':
+        return True
+    if interval == '1d':
+        return row[0] < company_midnight_utc('Europe/Moscow')
+    return row[0] < datetime.utcnow() - timedelta(minutes=source_minutes(settings, 'subscriptions'))
 
 
 SOURCE_PROVIDERS = {'ecomkassa': ['ecomkassa'], 'ecomkassa_receipts': ['ecomkassa_gateway'],
@@ -417,15 +436,25 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
         conn.rollback()
         print(f'platform crm check failed: {e}')
     # Автопродление подписок по сохранённым картам Т‑Банка (проверка «кому пора» - в самой функции).
+    # Источник платформы целиком (company_id = 0 в журнале запусков), частота - из настроек.
     try:
-        cur.execute(f'''
-            SELECT 1 FROM {SCHEMA}.subscriptions s
-            WHERE s.auto_renew = true AND s.card_id IS NOT NULL
-              AND s.current_period_end < NOW() + INTERVAL '1 day'
-              AND s.current_period_end > NOW() - INTERVAL '3 days' LIMIT 1
-        ''')
-        if cur.fetchone():
-            tasks.append((0, SUBSCRIPTION_URL, {'action': 'renew_due'}))
+        if source_on(settings, 'subscriptions') and subscriptions_due(cur, settings):
+            cur.execute(f'''
+                SELECT 1 FROM {SCHEMA}.subscriptions s
+                WHERE s.auto_renew = true AND s.card_id IS NOT NULL
+                  AND s.current_period_end < NOW() + INTERVAL '1 day'
+                  AND s.current_period_end > NOW() - INTERVAL '3 days' LIMIT 1
+            ''')
+            if cur.fetchone():
+                tasks.append((0, SUBSCRIPTION_URL, {'action': 'renew_due'}))
+            elif source_interval(settings, 'subscriptions') != 'cron':
+                cur.execute(f'''
+                    INSERT INTO {SCHEMA}.cron_source_runs (source, company_id, tick, item_key, loaded, error, finished_at)
+                    VALUES ('subscriptions', 0, %s, '', 0, NULL, NOW())
+                    ON CONFLICT (source, company_id, item_key) DO UPDATE SET
+                        tick = EXCLUDED.tick, loaded = 0, error = NULL, finished_at = NOW()
+                ''', (str(tick_id)[:40],))
+                conn.commit()
     except Exception as e:
         conn.rollback()
         print(f'subscription renew check failed: {e}')

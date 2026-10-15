@@ -392,7 +392,7 @@ def renew_due(cur, conn, budget_seconds: float = 3.2) -> Dict[str, Any]:
     started = time.time()
     terminal = tbank_billing.load_terminal(cur)
     if not terminal:
-        return {'skipped': 'terminal'}
+        return {'skipped': 'terminal', 'renewed': []}
     cur.execute(f'''
         SELECT s.company_id, s.tariff_id, s.renew_period, c.rebill_id,
                (SELECT cu.user_id FROM {SCHEMA}.company_users cu JOIN {SCHEMA}.roles r ON r.id = cu.role_id
@@ -420,4 +420,6 @@ def renew_due(cur, conn, budget_seconds: float = 3.2) -> Dict[str, Any]:
         status = res['status']
         done.append({'company_id': company_id, 'status': status})
     print(f'[renew_due] {done}')
-    return {'renewed': done}
+    # Не всех успели (лимит 5 за раз или время) - планировщик продолжит на следующем запуске.
+    more = len(due) == 5 or len(done) < len([d for d in due if tariffs.get(d[1]) and d[4]])
+    return {'renewed': done, 'more': more}
