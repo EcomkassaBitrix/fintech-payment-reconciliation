@@ -103,9 +103,10 @@ SELECT = f'''
 
 def list_transactions(cur, params: Dict[str, Any]) -> Dict[str, Any]:
     where, args = ['1=1'], []
-    if params.get('provider'):
+    # provider=yookassa в адресе - маршрут функции, а не фильтр; фильтр по провайдеру - pay_provider.
+    if params.get('pay_provider'):
         where.append('COALESCE(p.provider_slug, p.method) = %s')
-        args.append(params['provider'])
+        args.append(params['pay_provider'])
     if params.get('status'):
         where.append('p.status = %s')
         args.append(params['status'])

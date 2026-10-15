@@ -109,7 +109,7 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     POST {action: "disconnect", slug}        -> отключить магазин
     POST {action: "save_terminal", terminal_key, terminal_password, receipt_enabled, taxation, vat}
                                              -> терминал Т‑Банка (проверяется запросом в банк)
-    GET  ?action=transactions&provider=&status=&search=&limit=&offset= -> платежи за подписку всех клиентов
+    GET  ?action=transactions&pay_provider=&status=&search=&limit=&offset= -> платежи за подписку всех клиентов
     POST {action: "refund", payment_id}      -> полный возврат через платёжную систему (Т‑Банк: Cancel)
     GET  ?action=check&slug=tbank            -> проверить терминал Т‑Банка
     '''
