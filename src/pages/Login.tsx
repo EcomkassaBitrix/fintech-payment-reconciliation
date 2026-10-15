@@ -7,6 +7,7 @@ import Icon from '@/components/ui/icon';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import PendingPromoNotice from '@/components/PendingPromoNotice';
 import { formatPhoneNumber, isValidPhone } from '@/lib/formatters';
 
 type MessengerType = 'whatsapp' | 'telegram' | 'max' | null;
@@ -117,6 +118,8 @@ const Login = () => {
           </a>
           <p className="text-sm text-muted-foreground">Автоматизация платежей</p>
         </div>
+
+        <PendingPromoNotice className="mb-4" hint="Войдите или зарегистрируйтесь — подписка включится сама" />
 
         <Card className="shadow-2xl border-0 animate-scale-in">
           <CardHeader className="text-center pb-4">

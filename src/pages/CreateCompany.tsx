@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { GOALS, reachGoal } from '@/lib/metrika';
 import functionUrls from '../../backend/func2url.json';
 import { sanitizeInn, isValidInn, getInnHint } from '@/lib/formatters';
+import PendingPromoNotice from '@/components/PendingPromoNotice';
 
 interface CompanyLookupData {
   inn: string;
@@ -150,6 +151,8 @@ const CreateCompany = () => {
             {hasCompanies ? 'Добавьте ещё одну компанию' : 'Добавьте свою первую компанию'}
           </p>
         </div>
+
+        <PendingPromoNotice className="mb-4" hint="Создайте компанию — подписка по промокоду включится сразу" />
 
         <Card className="relative shadow-2xl border-0 animate-scale-in">
           {hasCompanies && (
