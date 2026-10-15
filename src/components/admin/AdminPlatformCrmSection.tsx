@@ -34,6 +34,7 @@ const AdminPlatformCrmSection = () => {
   const [loadingRef, setLoadingRef] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const loadReference = useCallback(async (url: string) => {
     if (!user || !url.trim()) return;
@@ -196,17 +197,27 @@ const AdminPlatformCrmSection = () => {
 
       <Card className="border-border bg-card">
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-          <div>
-            <CardTitle className="text-lg">Битрикс24</CardTitle>
-            <CardDescription>
-              Регистрация → контакт и {entityWord} · ФИО и почта → обновление контакта · новая компания → компания с ИНН
-            </CardDescription>
-          </div>
+          <button type="button" onClick={() => setOpen(!open)} className="flex flex-1 items-start gap-3 text-left">
+            <Icon name={open ? 'ChevronDown' : 'ChevronRight'} size={18} className="mt-1 shrink-0 text-muted-foreground" />
+            <div>
+              <CardTitle className="text-lg">Битрикс24</CardTitle>
+              <CardDescription>
+                Регистрация → контакт и {entityWord} · ФИО и почта → обновление контакта · новая компания → компания с ИНН
+              </CardDescription>
+            </div>
+          </button>
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-sm text-muted-foreground">Передавать</span>
-            <Switch checked={form.is_enabled} onCheckedChange={(v) => set({ is_enabled: v })} />
+            <Switch
+              checked={form.is_enabled}
+              onCheckedChange={(v) => {
+                set({ is_enabled: v });
+                setOpen(true);
+              }}
+            />
           </div>
         </CardHeader>
+        {open && (
         <CardContent className="space-y-5">
           <div className="space-y-1.5">
             <Label>Входящий вебхук Битрикс24</Label>
@@ -328,6 +339,7 @@ const AdminPlatformCrmSection = () => {
             </Button>
           </div>
         </CardContent>
+        )}
       </Card>
 
       <PlatformCrmEventsCard events={events} pending={pending} busy={busy} onRetry={retry} />
