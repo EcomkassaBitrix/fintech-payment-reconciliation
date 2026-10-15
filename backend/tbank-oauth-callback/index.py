@@ -7,6 +7,7 @@ from tbank_oauth import (
     build_authorize_url,
     exchange_code_for_token,
     is_production_configured,
+    fetch_company_info,
     SANDBOX_TOKEN
 )
 from auth_guard import guard
@@ -99,6 +100,62 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if method == 'POST':
             body = json.loads(event.get('body') or '{}')
+
+            if body.get('action') == 'save_token':
+                company_id = body.get('company_id')
+                token = (body.get('token') or '').strip()
+                if token.lower().startswith('bearer '):
+                    token = token[7:].strip()
+                if not company_id or not token:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'Укажите токен Т-Бизнес'}, ensure_ascii=False),
+                        'isBase64Encoded': False
+                    }
+                company_info = fetch_company_info(token, False)
+                if not company_info:
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'success': False, 'error': 'Т-Банк не принял токен. Проверьте, что он действующий и у него есть доступ к счетам и выписке'}, ensure_ascii=False),
+                        'isBase64Encoded': False
+                    }
+                cur.execute('''
+                    INSERT INTO t_p83864310_fintech_payment_reco.company_bank_oauth_grants
+                        (company_id, provider_slug, is_sandbox, access_token, refresh_token, scope, expires_at)
+                    VALUES (%s, 'tbank_account', false, %s, NULL, 'manual_token', NULL)
+                    ON CONFLICT (company_id, provider_slug) DO UPDATE SET
+                        is_sandbox = false,
+                        access_token = EXCLUDED.access_token,
+                        refresh_token = NULL,
+                        scope = 'manual_token',
+                        expires_at = NULL,
+                        revoked_at = NULL,
+                        updated_at = NOW()
+                ''', (company_id, token))
+                conn.commit()
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'success': True, 'company_name': company_info.get('name')}, ensure_ascii=False),
+                    'isBase64Encoded': False
+                }
+
+            if body.get('action') == 'disconnect':
+                company_id = body.get('company_id')
+                cur.execute('''
+                    DELETE FROM t_p83864310_fintech_payment_reco.company_bank_oauth_grants
+                    WHERE company_id = %s AND provider_slug = 'tbank_account'
+                ''', (company_id,))
+                conn.commit()
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'success': True}),
+                    'isBase64Encoded': False
+                }
+
             code = body.get('code')
             company_id = body.get('company_id') or body.get('state')
             redirect_uri = body.get('redirect_uri', '')

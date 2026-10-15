@@ -25,6 +25,9 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
   const [isSandbox, setIsSandbox] = useState(false);
   const [accounts, setAccounts] = useState<TbankAccount[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenError, setTokenError] = useState('');
+  const [isSavingToken, setIsSavingToken] = useState(false);
 
   const checkConnection = async () => {
     setIsChecking(true);
@@ -68,6 +71,73 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
     }
   };
 
+  const postAction = async (payload: Record<string, unknown>) => {
+    const response = await fetch(functionUrls['tbank-oauth-callback'], {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_id: companyId, ...payload })
+    });
+    return response.json();
+  };
+
+  const handleSaveToken = async () => {
+    if (!tokenInput.trim()) {
+      setTokenError('Вставьте токен из Т-Бизнес');
+      return;
+    }
+    setIsSavingToken(true);
+    setTokenError('');
+    try {
+      const data = await postAction({ action: 'save_token', token: tokenInput.trim() });
+      if (data.success) {
+        setTokenInput('');
+        onAccountNumberChange('');
+        await checkConnection();
+      } else {
+        setTokenError(data.error || 'Не удалось подключить токен');
+      }
+    } catch {
+      setTokenError('Не удалось связаться с сервером, попробуйте ещё раз');
+    } finally {
+      setIsSavingToken(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setIsConnecting(true);
+    try {
+      await postAction({ action: 'disconnect' });
+      onAccountNumberChange('');
+      await checkConnection();
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const tokenForm = (
+    <div className="space-y-2 rounded-lg border border-border p-3">
+      <Label htmlFor="tbank_token">Токен Т-Бизнес</Label>
+      <div className="flex gap-2">
+        <Input
+          id="tbank_token"
+          type="password"
+          autoComplete="off"
+          placeholder="Вставьте токен"
+          value={tokenInput}
+          onChange={(e) => { setTokenInput(e.target.value); setTokenError(''); }}
+        />
+        <Button type="button" onClick={handleSaveToken} disabled={isSavingToken}>
+          {isSavingToken && <Icon name="Loader2" size={14} className="animate-spin mr-2" />}
+          Подключить
+        </Button>
+      </div>
+      {tokenError && <p className="text-xs text-destructive">{tokenError}</p>}
+      <p className="text-xs text-muted-foreground">
+        Т-Бизнес → Интеграции → API → выпустить токен с доступом к счетам и выписке. После проверки счета подтянутся списком
+      </p>
+    </div>
+  );
+
   if (isChecking) {
     return (
       <div>
@@ -102,6 +172,23 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
             ))}
           </SelectContent>
         </Select>
+        {isSandbox ? (
+          <div className="pt-2 space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Сейчас загружаются тестовые операции банка. Чтобы грузить платежи с вашего счёта, подключите свой токен
+            </p>
+            {tokenForm}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDisconnect}
+            disabled={isConnecting}
+            className="text-xs text-muted-foreground underline hover:text-foreground"
+          >
+            Отключить токен
+          </button>
+        )}
       </div>
     );
   }
@@ -117,16 +204,17 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
           onChange={(e) => onAccountNumberChange(e.target.value)}
         />
         <p className="text-xs text-muted-foreground mt-1">
-          Введите вручную или подключите доступ через Т-Бизнес — тогда счета подтянутся автоматически
+          Введите вручную или подключите токен Т-Бизнес — тогда счета подтянутся автоматически
         </p>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting}>
+      {tokenForm}
+      <Button type="button" variant="ghost" size="sm" onClick={handleConnect} disabled={isConnecting}>
         {isConnecting ? (
           <Icon name="Loader2" size={14} className="animate-spin mr-2" />
         ) : (
           <Icon name="Link" size={14} className="mr-2" />
         )}
-        Подключить через Т-Бизнес
+        Попробовать на демо-данных
       </Button>
     </div>
   );
