@@ -21,21 +21,28 @@ interface RoleCardProps {
   role: Role;
   userCount: number;
   modules: Module[];
+  active?: boolean;
+  onCountClick?: () => void;
 }
 
-const RoleCard = ({ role, userCount, modules }: RoleCardProps) => {
+const RoleCard = ({ role, userCount, modules, active, onCountClick }: RoleCardProps) => {
   const [expanded, setExpanded] = useState(false);
   return (
-    <Card className="transition-shadow hover:shadow-lg">
+    <Card className={`transition-shadow hover:shadow-lg ${active ? 'border-primary/60' : ''}`}>
       <CardContent className="p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <div className={`h-2.5 w-2.5 shrink-0 rounded-full ${role.color}`} />
             <span className="truncate font-semibold text-foreground">{role.name}</span>
           </div>
-          <Badge variant="secondary" title="Пользователей с этой ролью">
-            {userCount}
-          </Badge>
+          <button type="button" onClick={onCountClick} title={active ? 'Показать всех' : 'Показать пользователей с этой ролью'}>
+            <Badge
+              variant={active ? 'default' : 'secondary'}
+              className={active ? '' : 'hover:bg-primary/20'}
+            >
+              {userCount}
+            </Badge>
+          </button>
         </div>
         <button
           type="button"
