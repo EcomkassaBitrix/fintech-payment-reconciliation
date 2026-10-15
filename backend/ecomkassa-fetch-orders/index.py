@@ -238,6 +238,29 @@ def save_receipt(cur, integration_id: int, company_id: int, order_id: Any,
     return receipt_id, float(total_sum) if total_sum else None
 
 
+PAID_ORDER_STATUSES = {'PAID', 'COMPLETED'}
+
+
+def is_invoice_paid(item: Dict[str, Any], report_data: Dict[str, Any]) -> bool:
+    '''Счёт/заказ оплачен покупателем: статус документа PAID/COMPLETED или invoice_payload.status = done.'''
+    invoice_payload = report_data.get('invoice_payload')
+    if not isinstance(invoice_payload, dict) or not invoice_payload.get('provider'):
+        return False
+    return item.get('status') in PAID_ORDER_STATUSES or invoice_payload.get('status') == 'done'
+
+
+def invoice_amount(item: Dict[str, Any], report_data: Dict[str, Any]) -> Optional[float]:
+    invoice_payload = report_data.get('invoice_payload') or {}
+    for value in ((report_data.get('payload') or {}).get('total'), invoice_payload.get('amount'),
+                  invoice_payload.get('total'), item.get('total')):
+        try:
+            if value is not None and float(value) > 0:
+                return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def save_synthetic_payment(cur, gateway_integration_id: int, company_id: int, order_id: Any,
                             receipt_id: Optional[int], total_sum: Optional[float], report_data: Dict[str, Any]) -> None:
     '''
@@ -249,10 +272,9 @@ def save_synthetic_payment(cur, gateway_integration_id: int, company_id: int, or
     синтезируем ту же запись здесь по данным report(), с receipt_id проставленным
     напрямую (та же связь, что использует live-путь), чтобы платёж сразу был
     виден в реестре транзакций и группировался с чеком.
-    Вызывающий код уже гарантировал report_data['status'] == 'done' - раз чек
-    фискализирован, деньги точно были получены, поэтому статус платежа = CONFIRMED
-    безусловно (конкретное значение invoice_payload.status у Екомкассы не
-    документировано полностью и ненадёжно для маппинга статусов).
+    Вызывающий код уже гарантировал, что счёт оплачен (is_invoice_paid), поэтому
+    статус платежа = CONFIRMED. receipt_id может быть пустым, если чек ещё не done -
+    он проставится при следующей загрузке.
     '''
     invoice_payload = report_data.get('invoice_payload') or {}
     if not isinstance(invoice_payload, dict):
@@ -271,6 +293,8 @@ def save_synthetic_payment(cur, gateway_integration_id: int, company_id: int, or
         ) VALUES (%s, %s, %s, NULL, %s, %s, 'CONFIRMED', NULL, NULL, NULL, NULL, NULL, NULL, NULL, %s, %s, %s, %s)
         ON CONFLICT (integration_id, payment_id, status) DO UPDATE SET
             receipt_id = COALESCE(EXCLUDED.receipt_id, {SCHEMA}.webhook_payments.receipt_id),
+            raw_data = CASE WHEN EXCLUDED.receipt_id IS NOT NULL THEN EXCLUDED.raw_data
+                            ELSE {SCHEMA}.webhook_payments.raw_data END,
             payment_provider = COALESCE(EXCLUDED.payment_provider, {SCHEMA}.webhook_payments.payment_provider),
             amount = CASE WHEN {SCHEMA}.webhook_payments.amount = 0
                           THEN EXCLUDED.amount
@@ -457,6 +481,7 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         inserted = 0
         skipped = 0
+        payments_saved = 0
 
         # report() для счетов (INVC) у Екомкассы заметно медленнее, чем для
         # чеков (VCHR) - при последовательных запросах пачка из batch_size
@@ -476,31 +501,31 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             external_id = item.get('externalId')
             order_type = item.get('orderType')
 
-            # report().status может быть НЕ "done" даже если сам счёт/заказ
-            # уже оплачен покупателем (напр. "wait") - Екомкасса ещё не
-            # пробила физический фискальный чек по этому платежу на момент
-            # запроса. Пропускаем такой документ ЦЕЛИКОМ (ни чек, ни платёж
-            # не создаются) - без фискальных реквизитов (payload) нечего
-            # сохранять как чек, а без чека нет receipt_id, чтобы связать с
-            # ним платёж. Документ подтянется сам при следующей дозагрузке
-            # или "живым" вебхуком, когда касса физически пробьёт чек.
-            if not report_data or report_data.get('status') != 'done':
+            if not report_data:
                 skipped += 1
                 continue
 
-            receipt_id, total_sum = save_receipt(
-                cur, integration_id, company_id, order_id, external_id, order_type, report_data,
-                item.get('isSale'), item.get('isCorrection')
-            )
-            if not receipt_id:
-                skipped += 1
-                continue
+            receipt_id, total_sum = None, None
+            if report_data.get('status') == 'done':
+                receipt_id, total_sum = save_receipt(
+                    cur, integration_id, company_id, order_id, external_id, order_type, report_data,
+                    item.get('isSale'), item.get('isCorrection')
+                )
+                if receipt_id:
+                    inserted += 1
 
-            inserted += 1
-
-            if report_data.get('invoice_payload'):
+            # Оплаченный счёт/заказ загружаем как платёж сразу, даже если касса ещё
+            # не пробила чек - чек привяжется следующим тиком, когда станет done.
+            invoice_paid = is_invoice_paid(item, report_data)
+            if invoice_paid:
+                if total_sum is None:
+                    total_sum = invoice_amount(item, report_data)
                 gw_id = gateway_integration_id or integration_id
                 save_synthetic_payment(cur, gw_id, company_id, order_id, receipt_id, total_sum, report_data)
+                payments_saved += 1
+
+            if not receipt_id and not invoice_paid:
+                skipped += 1
 
         # Время синхронизации кассы - для плашки «Синхронизация: N назад».
         cur.execute(f'UPDATE {SCHEMA}.user_integrations SET last_synced_at = NOW() WHERE id = %s', (integration_id,))
@@ -512,6 +537,7 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return response(200, {
             'success': True,
             'matched_total': matched_total,
+            'payments_saved': payments_saved,
             'processed': len(batch),
             'inserted': inserted,
             'skipped': skipped,
