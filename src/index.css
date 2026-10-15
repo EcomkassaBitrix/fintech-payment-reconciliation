@@ -86,6 +86,31 @@
     @apply border-border;
   }
 
+  input[type='checkbox'] {
+    @apply relative h-4 w-4 shrink-0 cursor-pointer appearance-none rounded-[4px] border border-primary/55 bg-muted transition-colors;
+  }
+
+  input[type='checkbox']:hover {
+    @apply border-primary/90;
+  }
+
+  input[type='checkbox']:checked {
+    @apply border-primary bg-primary;
+  }
+
+  input[type='checkbox']:checked::after {
+    content: '';
+    @apply absolute left-[5px] top-[1px] h-[9px] w-[4px] rotate-45 border-b-2 border-r-2 border-primary-foreground;
+  }
+
+  input[type='checkbox']:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  input[type='checkbox']:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family: "Inter", sans-serif;
