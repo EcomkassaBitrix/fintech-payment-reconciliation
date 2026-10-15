@@ -10,6 +10,7 @@ from ru_trusted_ca import build_ssl_context
 TBANK_SSL_CONTEXT = build_ssl_context()
 
 API_BASE = 'https://business.tbank.ru/openapi/api/v1'
+API_BASE_V4 = 'https://business.tbank.ru/openapi/api/v4'
 OAUTH_AUTHORIZE_URL = 'https://id.tbank.ru/auth/authorize'
 OAUTH_TOKEN_URL = 'https://id.tbank.ru/auth/token'
 
@@ -54,14 +55,22 @@ def exchange_code_for_token(code: str, redirect_uri: str) -> Optional[Dict[str, 
         return None
 
 
-def _request(path: str, access_token: str) -> Optional[Any]:
+def _request(path: str, access_token: str, base: str = API_BASE) -> Optional[Any]:
     if not access_token:
         return None
-    req = urllib.request.Request(f'{API_BASE}{path}', headers={'Authorization': f'Bearer {access_token}'})
+    req = urllib.request.Request(f'{base}{path}', headers={'Authorization': f'Bearer {access_token}'})
     try:
         with urllib.request.urlopen(req, timeout=15, context=TBANK_SSL_CONTEXT) as response:
             return json.loads(response.read().decode('utf-8'))
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
+    except urllib.error.HTTPError as e:
+        try:
+            details = e.read().decode('utf-8')[:300]
+        except Exception:
+            details = ''
+        print(f'[tbank] {path.split("?")[0]} -> HTTP {e.code}: {details}')
+        return None
+    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError) as e:
+        print(f'[tbank] {path.split("?")[0]} -> {type(e).__name__}: {e}')
         return None
 
 
@@ -72,7 +81,7 @@ def fetch_company_info(access_token: str) -> Optional[Dict[str, Any]]:
 
 def fetch_accounts(access_token: str) -> Optional[List[Dict[str, Any]]]:
     '''Список расчётных счетов компании, доступных по токену.'''
-    return _request('/bank-accounts', access_token)
+    return _request('/bank-accounts', access_token, API_BASE_V4) or _request('/bank-accounts', access_token)
 
 
 def fetch_statement(access_token: str, account_number: str, date_from: str,

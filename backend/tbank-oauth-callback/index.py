@@ -7,7 +7,8 @@ from tbank_oauth import (
     build_authorize_url,
     exchange_code_for_token,
     is_production_configured,
-    fetch_company_info
+    fetch_company_info,
+    fetch_accounts
 )
 from auth_guard import guard
 
@@ -97,6 +98,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'isBase64Encoded': False
                     }
                 company_info = fetch_company_info(token)
+                if not company_info and fetch_accounts(token) is not None:
+                    company_info = {'name': ''}
                 if not company_info:
                     return {
                         'statusCode': 200,
@@ -121,7 +124,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'success': True, 'company_name': company_info.get('name')}, ensure_ascii=False),
+                    'body': json.dumps({'success': True, 'company_name': company_info.get('name') or ''}, ensure_ascii=False),
                     'isBase64Encoded': False
                 }
 

@@ -75,6 +75,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         access_token = row[0]
 
         company_info = fetch_company_info(access_token)
+        if not company_info and fetch_accounts(access_token) is not None:
+            company_info = {'name': ''}
         if not company_info:
             return {
                 'statusCode': 200,
@@ -96,7 +98,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     {
                         'account_number': acc.get('accountNumber'),
                         'currency': acc.get('currency'),
-                        'balance': acc.get('balance', {}).get('otb')
+                        'balance': (acc.get('balance') or {}).get('otb')
                     }
                     for acc in accounts
                 ]
