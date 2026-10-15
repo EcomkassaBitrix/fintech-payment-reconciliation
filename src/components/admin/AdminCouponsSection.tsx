@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatShortDate } from '@/lib/subscription';
 import functionUrls from '../../../backend/func2url.json';
+import { promoLink } from '@/lib/pendingPromo';
 import CouponDialog, { Coupon, CouponTariff } from './CouponDialog';
 
 const api = (functionUrls as Record<string, string>)['admin-tariffs'];
@@ -75,6 +76,15 @@ const AdminCouponsSection = () => {
     try {
       await navigator.clipboard.writeText(code);
       toast({ title: `Промокод ${code} скопирован` });
+    } catch {
+      toast({ title: 'Не удалось скопировать', variant: 'destructive' });
+    }
+  };
+
+  const copyLink = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(promoLink(code));
+      toast({ title: 'Ссылка скопирована', description: 'По ней клиент зарегистрируется, и промокод применится сам' });
     } catch {
       toast({ title: 'Не удалось скопировать', variant: 'destructive' });
     }
@@ -153,6 +163,14 @@ const AdminCouponsSection = () => {
                                   onClick={() => copyCode(c.code)}
                                 >
                                   <Icon name="Copy" size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Скопировать ссылку для клиента"
+                                  className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                                  onClick={() => copyLink(c.code)}
+                                >
+                                  <Icon name="Link" size={14} />
                                 </button>
                               </div>
                             </TableCell>

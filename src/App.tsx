@@ -21,6 +21,8 @@ import InvitePage from "./pages/InvitePage";
 import TochkaOAuthCallback from "./pages/TochkaOAuthCallback";
 import YookassaOAuthCallback from "./pages/YookassaOAuthCallback";
 import LegalDocumentPage from "./pages/LegalDocumentPage";
+import PromoLinkPage from "./pages/PromoLinkPage";
+import PendingPromoActivator from "@/components/PendingPromoActivator";
 
 const queryClient = new QueryClient();
 
@@ -34,11 +36,13 @@ const App = () => (
         <AuthProvider>
           <BackfillProvider>
             <MaintenanceGate>
+            <PendingPromoActivator />
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/create-company" element={<CreateCompany />} />
               <Route path="/invite/:token" element={<InvitePage />} />
+              <Route path="/promo/:code" element={<PromoLinkPage />} />
               <Route path="/oauth/tochka" element={<TochkaOAuthCallback />} />
               <Route path="/oauth/yookassa" element={<YookassaOAuthCallback />} />
               <Route path="/terms" element={<LegalDocumentPage doc="terms" />} />

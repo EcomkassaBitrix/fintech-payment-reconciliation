@@ -22,6 +22,7 @@ import TariffPlansSection from '@/components/subscription/TariffPlansSection';
 import CheckoutPanel from '@/components/subscription/CheckoutPanel';
 import PaymentResultAndHistory from '@/components/subscription/PaymentResultAndHistory';
 import PromoCodeField from '@/components/subscription/PromoCodeField';
+import { SUBSCRIPTION_CHANGED } from '@/lib/pendingPromo';
 
 interface SubscriptionPageProps {
   highlightModule?: string | null;
@@ -146,6 +147,13 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
       setAutopayBusy(false);
     }
   };
+
+  useEffect(() => {
+    const reload = () => load();
+    window.addEventListener(SUBSCRIPTION_CHANGED, reload);
+    return () => window.removeEventListener(SUBSCRIPTION_CHANGED, reload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
 
   useEffect(() => {
     setSelected(null);
