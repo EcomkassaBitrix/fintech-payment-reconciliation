@@ -85,9 +85,9 @@ const AccessManagement = () => {
         <div>
           <h2 className="text-2xl sm:text-3xl font-display font-bold text-foreground mb-2">Управление доступом</h2>
           <p className="text-muted-foreground">
-            Роли, пользователи и права доступа компании «{currentCompany?.name}»
+            Роли, пользователи
             {typeof maxUsers === 'number' && (
-              <span className="ml-2 text-xs">· {activeAndPendingCount}/{maxUsers} пользователей по тарифу</span>
+              <span className="text-xs">· {activeAndPendingCount}/{maxUsers} пользователей по тарифу</span>
             )}
           </p>
         </div>
