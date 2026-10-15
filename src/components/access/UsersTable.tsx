@@ -59,7 +59,6 @@ const UsersTable = ({ users, roles, modules, onToggleStatus, onDeleteUser, curre
           <TableHead>Контакты</TableHead>
           <TableHead>Роль</TableHead>
           <TableHead>Статус</TableHead>
-          <TableHead>Модули</TableHead>
           <TableHead>Последняя активность</TableHead>
           <TableHead className="text-right">Действия</TableHead>
         </TableRow>
@@ -104,19 +103,6 @@ const UsersTable = ({ users, roles, modules, onToggleStatus, onDeleteUser, curre
                    user.status === 'pending' ? 'Ожидает' :
                    'Заблокирован'}
                 </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="flex gap-1">
-                  {user.modules.slice(0, 3).map((moduleId) => {
-                    const module = modules.find(m => m.id === moduleId);
-                    return module ? (
-                      <Icon key={moduleId} name={module.icon as any} size={16} className="text-muted-foreground" />
-                    ) : null;
-                  })}
-                  {user.modules.length > 3 && (
-                    <span className="text-xs text-muted-foreground">+{user.modules.length - 3}</span>
-                  )}
-                </div>
               </TableCell>
               <TableCell>
                 <span className="text-sm text-muted-foreground">{user.lastActive}</span>
