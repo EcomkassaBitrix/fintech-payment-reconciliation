@@ -35,6 +35,7 @@ const AdminPaymentProvidersSection = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [openSlug, setOpenSlug] = useState<string | null>(null);
 
   const replace = (p: PaymentProvider) => setProviders((prev) => prev.map((x) => (x.slug === p.slug ? p : x)));
 
@@ -133,11 +134,17 @@ const AdminPaymentProvidersSection = () => {
           const busy = busySlug === p.slug;
           const isTbank = p.slug === 'tbank';
           const showForm = isTbank && (editing === p.slug || !p.connected);
+          const isOpen = openSlug === p.slug;
           return (
             <Card key={p.slug} className="border-border bg-card">
               <CardContent className="p-5 space-y-4">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setOpenSlug(isOpen ? null : p.slug)}
+                    className="flex flex-1 items-start gap-3 text-left"
+                  >
+                    <Icon name={isOpen ? 'ChevronDown' : 'ChevronRight'} size={18} className="mt-2.5 shrink-0 text-muted-foreground" />
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                       <Icon name="Wallet" size={20} className="text-primary" />
                     </div>
@@ -155,7 +162,7 @@ const AdminPaymentProvidersSection = () => {
                       </div>
                       {p.description && <p className="text-sm text-muted-foreground mt-1">{p.description}</p>}
                     </div>
-                  </div>
+                  </button>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-sm text-muted-foreground">Принимать оплату</span>
                     <Switch
@@ -166,7 +173,7 @@ const AdminPaymentProvidersSection = () => {
                   </div>
                 </div>
 
-                {showForm ? (
+                {isOpen && (showForm ? (
                   <TbankTerminalForm
                     terminalKey={p.shop_id}
                     config={p.config || {}}
@@ -219,9 +226,9 @@ const AdminPaymentProvidersSection = () => {
                       Подключить
                     </Button>
                   </div>
-                )}
-                {isTbank && <TbankWebhookUrl />}
-                {isTbank && p.connected && <TbankTestPanel receiptOn={Boolean(p.config?.receipt_enabled)} />}
+                ))}
+                {isOpen && isTbank && <TbankWebhookUrl />}
+                {isOpen && isTbank && p.connected && <TbankTestPanel receiptOn={Boolean(p.config?.receipt_enabled)} />}
               </CardContent>
             </Card>
           );
