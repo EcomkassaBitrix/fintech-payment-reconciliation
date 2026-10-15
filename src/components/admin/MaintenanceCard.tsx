@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import Icon from '@/components/ui/icon';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import functionUrls from '../../../backend/func2url.json';
@@ -33,6 +34,7 @@ const MaintenanceCard = ({ enabled, message, until, onSaved }: MaintenanceCardPr
   const [text, setText] = useState(message || '');
   const [untilLocal, setUntilLocal] = useState(toLocalInput(until));
   const [isSaving, setIsSaving] = useState(false);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     setIsOn(enabled);
@@ -74,17 +76,32 @@ const MaintenanceCard = ({ enabled, message, until, onSaved }: MaintenanceCardPr
 
   return (
     <Card className={`bg-card ${isOn ? 'border-warning/60' : 'border-border'}`}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon name="Construction" fallback="Wrench" size={20} />
-          Технические работы
-        </CardTitle>
-        <CardDescription>
-          Закрывает сайт заглушкой «Сайт временно недоступен» для всех, кроме администраторов платформы.
-          Приём платежей, вебхуков и фоновые задачи продолжают работать
-        </CardDescription>
+      <CardHeader className="p-0">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex w-full items-start gap-3 rounded-lg px-5 py-4 text-left transition-colors hover:bg-muted/40"
+        >
+          <Icon name={open ? 'ChevronDown' : 'ChevronRight'} size={18} className="mt-1 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <CardTitle className="flex flex-wrap items-center gap-2">
+              <Icon name="Construction" fallback="Wrench" size={20} />
+              Технические работы
+              {enabled && (
+                <Badge variant="outline" className="border-warning/40 bg-warning/10 text-warning">
+                  Сайт закрыт
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription>
+              Закрывает сайт заглушкой «Сайт временно недоступен» для всех, кроме администраторов платформы.
+              Приём платежей, вебхуков и фоновые задачи продолжают работать
+            </CardDescription>
+          </div>
+        </button>
       </CardHeader>
-      <CardContent className="space-y-4">
+      {open && (
+      <CardContent className="space-y-4 pt-2">
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
           <div>
             <div className="text-sm font-medium">Показывать заглушку</div>
@@ -126,6 +143,7 @@ const MaintenanceCard = ({ enabled, message, until, onSaved }: MaintenanceCardPr
           </Button>
         </div>
       </CardContent>
+      )}
     </Card>
   );
 };
