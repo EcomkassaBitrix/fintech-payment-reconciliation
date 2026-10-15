@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDateTime } from '@/lib/formatDate';
 import PageBanner from '@/components/banners/PageBanner';
+import MaintenanceBlock from './MaintenanceBlock';
 import { Banner, BannerPage, BannerVariant, BANNER_VARIANTS, bannersApi } from '@/components/banners/bannerTypes';
 
 const emptyBanner = (page: string): Banner => ({ page, text: '', button_text: '', button_url: '', variant: 'info', is_active: true });
@@ -91,6 +92,8 @@ const AdminBannersSection = () => {
           «Скрыть» убирает баннер у клиентов, но текст сохраняется - его можно снова показать одной кнопкой.
         </p>
       </div>
+
+      <MaintenanceBlock />
 
       <Card>
         <CardContent className="p-0 divide-y divide-border">
