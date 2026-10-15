@@ -89,6 +89,12 @@ def process(cur, integration_id: int, company_id: int, config: Dict[str, Any],
     if not deal:
         return False, str(deal_id), f'Failed to fetch deal {deal_id} from Bitrix24 API'
 
+    chosen = {str(c) for c in (config.get('deal_categories') or []) if str(c).strip()}
+    category = str(deal.get('CATEGORY_ID') or '0')
+    if chosen and category not in chosen:
+        print(f'bitrix deal {deal_id} skipped: воронка {category} не выбрана в интеграции {integration_id}')
+        return True, None, f'SKIP:Сделка #{deal_id} из воронки {category} - она не выбрана в настройках интеграции'
+
     stage_id = deal.get('STAGE_ID', '')
     stage_name = STAGE_MAP.get(stage_id, stage_id)
 

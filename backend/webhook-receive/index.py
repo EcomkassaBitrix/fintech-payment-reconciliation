@@ -312,6 +312,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }
         elif provider_slug == 'bitrix24':
             _, external_deal_id, handler_error = bitrix24_handler.process(cur, integration_id, company_id, config, webhook_data)
+            if handler_error and handler_error.startswith('SKIP:'):
+                skip_note, handler_error = handler_error[5:], None
         elif provider_slug == 'amocrm':
             _, external_deal_id, handler_error = amocrm_handler.process(cur, integration_id, company_id, config, webhook_data)
         elif provider_slug == 'moyklass':
