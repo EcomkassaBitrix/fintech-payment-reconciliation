@@ -37,6 +37,9 @@ const AutoPayCard = ({ autopay, endDate, canPay, busy, onToggle }: AutoPayCardPr
       {autopay.card && canPay && (
         <Switch checked={autopay.auto_renew} disabled={busy} onCheckedChange={onToggle} />
       )}
+      {autopay.card && !canPay && (
+        <span className="text-xs text-muted-foreground">Включает владелец или админ компании</span>
+      )}
     </div>
   </div>
 );
