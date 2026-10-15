@@ -71,6 +71,15 @@ const AdminCouponsSection = () => {
     return false;
   };
 
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast({ title: `Промокод ${code} скопирован` });
+    } catch {
+      toast({ title: 'Не удалось скопировать', variant: 'destructive' });
+    }
+  };
+
   const toggleActivations = async (id: number) => {
     if (openId === id) {
       setOpenId(null);
@@ -134,7 +143,19 @@ const AdminCouponsSection = () => {
                       return (
                         <Fragment key={c.id}>
                           <TableRow>
-                            <TableCell className="font-mono font-semibold">{c.code}</TableCell>
+                            <TableCell className="font-mono font-semibold">
+                              <div className="group flex items-center gap-1.5">
+                                {c.code}
+                                <button
+                                  type="button"
+                                  title="Скопировать"
+                                  className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                                  onClick={() => copyCode(c.code)}
+                                >
+                                  <Icon name="Copy" size={14} />
+                                </button>
+                              </div>
+                            </TableCell>
                             <TableCell>{c.tariff_name}</TableCell>
                             <TableCell>{c.period === 'year' ? '1 год' : '1 месяц'}</TableCell>
                             <TableCell>{c.usage_type === 'single' ? 'Одноразовый' : 'Многоразовый'}</TableCell>
