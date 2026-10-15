@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
@@ -14,18 +15,22 @@ interface CurrentPlanCardProps {
   currentPaid?: PlanTariff;
   onRenew: (slug: string) => void;
   onChangePlan: () => void;
+  promo?: ReactNode;
 }
 
-const CurrentPlanCard = ({ tariffName, status, isTrial, endDate, left, canPay, currentPaid, onRenew, onChangePlan }: CurrentPlanCardProps) => (
+const CurrentPlanCard = ({ tariffName, status, isTrial, endDate, left, canPay, currentPaid, onRenew, onChangePlan, promo }: CurrentPlanCardProps) => (
   <div className="rounded-lg border border-border bg-muted/30 p-4">
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
         <div className="text-xs text-muted-foreground">Текущий тариф</div>
-        <div className="text-xl font-display font-bold">{tariffName || '—'}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xl font-display font-bold">{tariffName || '—'}</span>
+          <Badge variant="outline" className={status.className}>
+            {status.label}
+          </Badge>
+        </div>
       </div>
-      <Badge variant="outline" className={status.className}>
-        {status.label}
-      </Badge>
+      {promo}
     </div>
     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
       <span className="text-muted-foreground">

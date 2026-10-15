@@ -102,7 +102,7 @@ const PaymentsList = ({ payments }: { payments: Payment[] }) => {
                     <span>{formatLongDate(p.paid_at || p.created_at)}</span>
                     <span className={`flex items-center gap-1 ${isGrant ? 'text-primary' : ''}`}>
                       <Icon name={p.is_recurring ? 'RefreshCw' : m.icon} size={12} />
-                      {p.is_recurring ? 'Автопродление' : m.label}
+                      {p.is_recurring ? 'Автопродление' : p.coupon_code ? `Активирован промокод ${p.coupon_code}` : m.label}
                     </span>
                     {p.status === 'paid' && p.period_end && <span>· действует до {formatLongDate(p.period_end)}</span>}
                     {p.status === 'failed' && p.error && <span className="text-destructive">· {p.error}</span>}

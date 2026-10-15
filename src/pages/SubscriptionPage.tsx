@@ -33,6 +33,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
   const [tariffs, setTariffs] = useState<PlanTariff[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [canPay, setCanPay] = useState(false);
+  const [canCoupon, setCanCoupon] = useState(false);
   const [current, setCurrent] = useState<CurrentPlan | null>(null);
   const [period, setPeriod] = useState<Period>('month');
   const [selected, setSelected] = useState<string | null>(null);
@@ -68,6 +69,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
         setTariffs(d.tariffs || []);
         setPayments(d.payments || []);
         setCanPay(Boolean(d.can_pay));
+        setCanCoupon(Boolean(d.can_coupon ?? d.can_pay));
         setCurrent(d.current || null);
         setProvider(d.provider || null);
         setAutopay(d.autopay || null);
@@ -239,23 +241,13 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
 
   return (
     <div className="max-w-5xl space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
         <div>
           <h2 className="mb-2 text-2xl sm:text-3xl font-display font-bold text-foreground">Подписка</h2>
           <p className="text-muted-foreground">
             {currentCompany ? 'Тариф, оплата и история платежей' : 'Компания не выбрана'}
           </p>
         </div>
-        {currentCompany && (
-          <PromoCodeField
-            companyId={currentCompany.id}
-            canApply={canPay}
-            onApplied={async () => {
-              await refreshCompanies();
-              load();
-            }}
-          />
-        )}
       </div>
 
         {currentCompany && (
@@ -276,6 +268,18 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
                 setSelected(null);
                 setPlanSheet(true);
               }}
+              promo={
+                canCoupon ? (
+                  <PromoCodeField
+                    companyId={currentCompany.id}
+                    canApply
+                    onApplied={async () => {
+                      await refreshCompanies();
+                      load();
+                    }}
+                  />
+                ) : null
+              }
             />
 
             {autopay?.card && (

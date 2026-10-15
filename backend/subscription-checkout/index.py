@@ -208,13 +208,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         role = member_role(cur, company_id, user_id)
         can_pay = role in PAY_ROLES
+        can_coupon = can_pay or bool(user_id and is_platform_admin(cur, user_id))
         terminal = tbank_billing.load_terminal(cur)
 
         if method == 'GET':
             cur.execute(f'''
                 SELECT p.id, t.name, p.period, p.days, p.amount, p.status, p.period_end, p.created_at, p.method,
                        p.is_recurring, p.error_message, p.paid_at, p.refund_amount, p.refunded_at,
-                       CASE WHEN p.status = 'pending' THEN p.payment_url END
+                       CASE WHEN p.status = 'pending' THEN p.payment_url END,
+                       CASE WHEN p.method = 'coupon' THEN p.provider_payment_id END
                 FROM {SCHEMA}.subscription_payments p JOIN {SCHEMA}.tariffs t ON t.id = p.tariff_id
                 WHERE p.company_id = %s AND (p.status <> 'pending' OR p.created_at > NOW() - INTERVAL '1 day')
                 ORDER BY p.created_at DESC LIMIT 100
@@ -224,7 +226,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'status': r[5], 'period_end': r[6], 'created_at': r[7], 'method': r[8],
                 'is_recurring': r[9], 'error': r[10], 'paid_at': r[11],
                 'refund_amount': float(r[12]) if r[12] is not None else None, 'refunded_at': r[13],
-                'payment_url': r[14]
+                'payment_url': r[14], 'coupon_code': r[15]
             } for r in cur.fetchall()]
             cur.execute(f'''
                 SELECT t.modules, t.max_companies, t.max_users, t.max_integrations, t.max_automations
@@ -237,12 +239,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'max_integrations': r[3], 'max_automations': r[4]
             } if r else None
             return respond(200, {'success': True, 'tariffs': billing.load_tariffs(cur), 'current': current,
-                                 'payments': payments, 'can_pay': can_pay,
+                                 'payments': payments, 'can_pay': can_pay, 'can_coupon': can_coupon,
                                  'provider': 'tbank' if terminal else None,
                                  'autopay': autopay_view(cur, company_id)})
 
         if action in ('coupon_check', 'coupon_apply'):
-            if not can_pay:
+            if not can_coupon:
                 return respond(403, {'error': 'Применить промокод может только владелец или админ компании'})
             if action == 'coupon_check':
                 coupon, error = coupons.find(cur, body.get('code'), company_id)

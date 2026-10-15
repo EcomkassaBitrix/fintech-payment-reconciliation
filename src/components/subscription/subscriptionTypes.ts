@@ -29,6 +29,7 @@ export interface Payment {
   refund_amount?: number | null;
   refunded_at?: string | null;
   payment_url?: string | null;
+  coupon_code?: string | null;
 }
 
 export interface AutoPay {
