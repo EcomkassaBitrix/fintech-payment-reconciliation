@@ -5,6 +5,7 @@ from typing import Any, Dict
 import psycopg2
 from auth_guard import guard, is_platform_admin
 import billing
+import coupons
 import downgrade
 import tbank_billing
 
@@ -138,6 +139,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     POST {action: "payment_status", company_id, payment_id} - статус после возврата с формы
     POST {action: "autopay", company_id, enabled} - вкл/выкл автопродление
     POST {action: "remove_card", company_id} - забыть карту (автопродление выключается)
+    POST {action: "coupon_check"|"coupon_apply", company_id, code} - проверить / применить промокод
     POST {action: "preview", company_id, tariff_slug} - что не помещается в лимиты тарифа
     POST ?tbank_notify=1 - уведомление Т‑Банка (подпись Token), ответ "OK"
     POST {action: "renew_due"} - внутренний вызов планировщика: автосписания по сохранённым картам
@@ -225,6 +227,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                  'payments': payments, 'can_pay': can_pay,
                                  'provider': 'tbank' if terminal else None,
                                  'autopay': autopay_view(cur, company_id)})
+
+        if action in ('coupon_check', 'coupon_apply'):
+            if not can_pay:
+                return respond(403, {'error': 'Применить промокод может только владелец или админ компании'})
+            if action == 'coupon_check':
+                coupon, error = coupons.find(cur, body.get('code'), company_id)
+            else:
+                coupon, error = coupons.apply(cur, body.get('code'), company_id, user_id)
+                conn.commit() if not error else conn.rollback()
+            if error:
+                return respond(400, {'error': error})
+            return respond(200, {'success': True, 'coupon': coupon})
 
         if action == 'preview':
             tariff = next((t for t in billing.load_tariffs(cur) if t['slug'] == body.get('tariff_slug')), None)

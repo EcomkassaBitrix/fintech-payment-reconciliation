@@ -9,6 +9,7 @@ import AdminPlatformCrmSection from '@/components/admin/AdminPlatformCrmSection'
 import AdminActionTemplatesSection from '@/components/admin/AdminActionTemplatesSection';
 import AdminSettingsSection from '@/components/admin/AdminSettingsSection';
 import AdminTariffsSection from '@/components/admin/AdminTariffsSection';
+import AdminCouponsSection from '@/components/admin/AdminCouponsSection';
 import AdminCasesSection from '@/components/admin/AdminCasesSection';
 import AdminBannersSection from '@/components/admin/AdminBannersSection';
 
@@ -27,6 +28,7 @@ const Admin = () => {
         {activeSection === 'action_templates' && <AdminActionTemplatesSection />}
         {activeSection === 'settings' && <AdminSettingsSection />}
         {activeSection === 'tariffs' && <AdminTariffsSection />}
+        {activeSection === 'coupons' && <AdminCouponsSection />}
         {activeSection === 'payments' && <AdminPaymentProvidersSection />}
         {activeSection === 'banners' && <AdminBannersSection />}
         {activeSection === 'cases' && <AdminCasesSection />}

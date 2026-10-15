@@ -21,6 +21,7 @@ import CurrentPlanCard from '@/components/subscription/CurrentPlanCard';
 import TariffPlansSection from '@/components/subscription/TariffPlansSection';
 import CheckoutPanel from '@/components/subscription/CheckoutPanel';
 import PaymentResultAndHistory from '@/components/subscription/PaymentResultAndHistory';
+import PromoCodeField from '@/components/subscription/PromoCodeField';
 
 interface SubscriptionPageProps {
   highlightModule?: string | null;
@@ -238,11 +239,23 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
 
   return (
     <div className="max-w-5xl space-y-6 animate-fade-in">
-      <div>
-        <h2 className="mb-2 text-2xl sm:text-3xl font-display font-bold text-foreground">Подписка</h2>
-        <p className="text-muted-foreground">
-          {currentCompany ? 'Тариф, оплата и история платежей' : 'Компания не выбрана'}
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="mb-2 text-2xl sm:text-3xl font-display font-bold text-foreground">Подписка</h2>
+          <p className="text-muted-foreground">
+            {currentCompany ? 'Тариф, оплата и история платежей' : 'Компания не выбрана'}
+          </p>
+        </div>
+        {currentCompany && (
+          <PromoCodeField
+            companyId={currentCompany.id}
+            canApply={canPay}
+            onApplied={async () => {
+              await refreshCompanies();
+              load();
+            }}
+          />
+        )}
       </div>
 
         {currentCompany && (

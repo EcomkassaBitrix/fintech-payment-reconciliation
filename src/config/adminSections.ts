@@ -10,6 +10,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { id: 'roles', name: 'Роли', icon: 'ShieldCheck' },
   { id: 'action_templates', name: 'Шаблоны действий', icon: 'Workflow' },
   { id: 'tariffs', name: 'Тарифы', icon: 'Tag' },
+  { id: 'coupons', name: 'Купоны', icon: 'Ticket' },
   { id: 'payments', name: 'Оплата', icon: 'Wallet' },
   { id: 'integrations', name: 'Интеграции CRM', icon: 'Plug' },
   { id: 'banners', name: 'Баннеры', icon: 'Megaphone' },

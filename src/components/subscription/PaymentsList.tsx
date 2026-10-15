@@ -84,7 +84,7 @@ const PaymentsList = ({ payments }: { payments: Payment[] }) => {
         <div className="divide-y divide-border rounded-lg border border-border">
           {list.slice(0, limit).map((p) => {
             const m = PAYMENT_METHODS[p.method || 'manual'] || { label: p.method || '—', icon: 'CreditCard' };
-            const isGrant = p.method === 'platform';
+            const isGrant = p.method === 'platform' || p.method === 'coupon';
             const st = STATUS[p.status || 'paid'] || { label: p.status || '—', className: 'border-border text-muted-foreground' };
             const crossed = ['failed', 'canceled', 'refunded'].includes(p.status || '');
             return (

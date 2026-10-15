@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import date
 from typing import Any, Dict
 
 import psycopg2
@@ -54,6 +55,65 @@ def list_tariffs(cur):
     } for r in cur.fetchall()]
 
 
+def list_coupons(cur):
+    cur.execute(f'''
+        SELECT c.id, c.code, c.tariff_id, t.name, c.period, c.usage_type, c.valid_until, c.is_active, c.created_at,
+               (SELECT COUNT(*) FROM {SCHEMA}.subscription_coupon_activations a WHERE a.coupon_id = c.id)
+        FROM {SCHEMA}.subscription_coupons c JOIN {SCHEMA}.tariffs t ON t.id = c.tariff_id
+        ORDER BY c.created_at DESC
+    ''')
+    return [{
+        'id': r[0], 'code': r[1], 'tariff_id': r[2], 'tariff_name': r[3], 'period': r[4], 'usage_type': r[5],
+        'valid_until': r[6].isoformat(), 'is_active': r[7], 'created_at': r[8], 'activations': r[9]
+    } for r in cur.fetchall()]
+
+
+def list_activations(cur, coupon_id):
+    cur.execute(f'''
+        SELECT a.id, COALESCE(NULLIF(c.full_name, ''), c.name), c.inn, a.created_at, a.period_end
+        FROM {SCHEMA}.subscription_coupon_activations a JOIN {SCHEMA}.companies c ON c.id = a.company_id
+        WHERE a.coupon_id = %s ORDER BY a.created_at DESC
+    ''', (coupon_id,))
+    return [{'id': r[0], 'company_name': r[1], 'inn': r[2], 'created_at': r[3], 'period_end': r[4]}
+            for r in cur.fetchall()]
+
+
+def save_coupon(cur, body, requester):
+    code = (body.get('code') or '').strip().upper()
+    if not code or len(code) > 64 or not all(ch.isalnum() or ch in '-_' for ch in code):
+        return 'Название купона - буквы, цифры, «-» и «_», до 64 символов'
+    if body.get('period') not in ('month', 'year'):
+        return 'Срок действия подписки: 1 месяц или 1 год'
+    if body.get('usage_type') not in ('single', 'multi'):
+        return 'Тип купона: одноразовый или многоразовый'
+    try:
+        valid_until = date.fromisoformat(str(body.get('valid_until') or ''))
+    except ValueError:
+        return 'Укажите дату, до которой купон можно применить'
+    cur.execute(f'SELECT 1 FROM {SCHEMA}.tariffs WHERE id = %s', (body.get('tariff_id'),))
+    if not cur.fetchone():
+        return 'Выберите тариф'
+    cur.execute(f'SELECT id FROM {SCHEMA}.subscription_coupons WHERE UPPER(code) = %s AND id <> %s',
+                (code, int(body.get('id') or 0)))
+    if cur.fetchone():
+        return 'Купон с таким названием уже есть'
+    values = (code, int(body['tariff_id']), body['period'], body['usage_type'], valid_until,
+              bool(body.get('is_active', True)))
+    if body.get('id'):
+        cur.execute(f'''
+            UPDATE {SCHEMA}.subscription_coupons SET code = %s, tariff_id = %s, period = %s, usage_type = %s,
+                valid_until = %s, is_active = %s, updated_at = NOW() WHERE id = %s RETURNING id
+        ''', (*values, body['id']))
+        if not cur.fetchone():
+            return 'Купон не найден'
+    else:
+        cur.execute(f'''
+            INSERT INTO {SCHEMA}.subscription_coupons (code, tariff_id, period, usage_type, valid_until, is_active, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ''', (*values, requester))
+    return None
+
+
 def parse_limit(value):
     '''Пусто - без ограничения (NULL), иначе целое >= 0.'''
     if value in (None, ''):
@@ -73,6 +133,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
           - пустой лимит = без ограничения; period_days - оплачиваемый срок, trial_days - пробный период (0 - нет)
     POST {action: "set_company_tariff", requester_user_id, company_id, tariff_id} - сменить тариф компании
     POST {action: "extend_subscription", requester_user_id, company_id, period: tariff|year} - продлить подписку
+    GET ?view=coupons - купоны на подписку и тарифы; GET ?view=coupon_activations&coupon_id= - кто применил
+    POST {action: "coupon_save", id?, code, tariff_id, period: month|year, usage_type: single|multi,
+          valid_until: YYYY-MM-DD, is_active} - создать/изменить купон
     '''
     denied = guard(event, check_company=False)
     if denied:
@@ -91,6 +154,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         if not requester or not is_admin(cur, requester):
             return respond(403, {'error': 'Доступно только администраторам платформы'})
+
+        if method == 'GET' and params.get('view') == 'coupons':
+            return respond(200, {'success': True, 'coupons': list_coupons(cur), 'tariffs': list_tariffs(cur)})
+
+        if method == 'GET' and params.get('view') == 'coupon_activations':
+            return respond(200, {'success': True, 'activations': list_activations(cur, params.get('coupon_id'))})
+
+        if method == 'POST' and body.get('action') == 'coupon_save':
+            error = save_coupon(cur, body, requester)
+            if error:
+                return respond(400, {'error': error})
+            conn.commit()
+            return respond(200, {'success': True, 'coupons': list_coupons(cur)})
 
         if method == 'POST' and body.get('action') == 'set_company_tariff':
             # Смена тарифа компании. Пробный -> статус trial, платный -> active.

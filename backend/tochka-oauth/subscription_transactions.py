@@ -9,7 +9,7 @@ from ru_trusted_ca import build_ssl_context
 SCHEMA = 't_p83864310_fintech_payment_reco'
 TBANK_API = 'https://securepay.tinkoff.ru/v2'
 SSL_CONTEXT = build_ssl_context()
-PROVIDER_NAMES = {'tbank': 'Т‑Банк', 'yookassa': 'ЮKassa', 'manual': 'Без платёжной системы', 'platform': 'Начислено платформой'}
+PROVIDER_NAMES = {'tbank': 'Т‑Банк', 'yookassa': 'ЮKassa', 'manual': 'Без платёжной системы', 'platform': 'Начислено платформой', 'coupon': 'Промокод'}
 REFUNDABLE = ('tbank',)
 
 

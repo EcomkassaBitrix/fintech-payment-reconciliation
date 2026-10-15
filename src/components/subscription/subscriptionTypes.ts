@@ -39,6 +39,7 @@ export interface AutoPay {
 
 export const PAYMENT_METHODS: Record<string, { label: string; icon: string }> = {
   platform: { label: 'Начислено платформой', icon: 'Gift' },
+  coupon: { label: 'Промокод', icon: 'Ticket' },
   manual: { label: 'Оплата без платёжной системы', icon: 'CreditCard' },
   tbank: { label: 'Картой через Т‑Банк', icon: 'CreditCard' },
   tochka: { label: 'Точка', icon: 'CreditCard' }
