@@ -47,18 +47,17 @@ def normalize_tx(external_id, operation_date, amount, direction, counterparty_na
 def get_tbank_access(cur, company_id: int) -> Dict[str, Any]:
     '''
     Достаёт токен доступа T-Business ID для компании, если владелец уже подтвердил
-    доступ через Т-Бизнес (токен или песочница). Если доступа нет - пустой словарь:
-    выписку не грузим, чтобы демо-операции не попали в реальную компанию.
+    токен Т-Бизнес. Если токена нет - пустой словарь, выписку не грузим.
     '''
     cur.execute('''
-        SELECT access_token, is_sandbox
+        SELECT access_token
         FROM t_p83864310_fintech_payment_reco.company_bank_oauth_grants
-        WHERE company_id = %s AND provider_slug = 'tbank_account'
+        WHERE company_id = %s AND provider_slug = 'tbank_account' AND NOT is_sandbox
     ''', (company_id,))
     row = cur.fetchone()
 
     if row and row[0]:
-        return {'access_token': row[0], 'is_sandbox': row[1]}
+        return {'access_token': row[0]}
 
     return {}
 
@@ -67,8 +66,7 @@ def fetch_tbank_account_statement(cur, integration_id: int, company_id: int, con
                                    date_from: str, date_to: str) -> Optional[List[Dict[str, Any]]]:
     '''
     Расчётный счёт Т-Банка (T-Business ID + T-API, https://developer.tbank.ru/docs/products/account-info).
-    Если компания подтвердила доступ через Т-Бизнес - используем её реальный access_token
-    (в бою) или общий тестовый токен (в песочнице). Каждая операция фильтруется по
+    Используем токен Т-Бизнес компании. Каждая операция фильтруется по
     ключевым словам из настройки интеграции (purpose_keywords) - в БД попадает
     операция, только если её назначение платежа содержит хотя бы одно из слов.
     Если ключевые слова не заданы - загружаются все операции без фильтрации.
@@ -89,7 +87,6 @@ def fetch_tbank_account_statement(cur, integration_id: int, company_id: int, con
             account_number=account_number,
             date_from=date_from,
             date_to=date_to,
-            is_sandbox=access['is_sandbox'],
             cursor=cursor
         )
         if data is None:
@@ -114,7 +111,7 @@ def fetch_tbank_account_statement(cur, integration_id: int, company_id: int, con
             ))
 
         cursor = data.get('nextCursor')
-        # Песочница банка иногда отдаёт один и тот же cursor бесконечно -
+        # Банк иногда отдаёт один и тот же cursor повторно -
         # останавливаемся, если пагинация не продвигается, чтобы не зациклиться.
         if not cursor or cursor == previous_cursor:
             break

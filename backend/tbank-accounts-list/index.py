@@ -3,7 +3,7 @@ import os
 import psycopg2
 from typing import Dict, Any
 
-from tbank_oauth import fetch_company_info, fetch_accounts, SANDBOX_TOKEN
+from tbank_oauth import fetch_company_info, fetch_accounts
 from auth_guard import guard
 
 CORS_HEADERS = {
@@ -57,9 +57,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     try:
         cur.execute('''
-            SELECT access_token, is_sandbox
+            SELECT access_token
             FROM t_p83864310_fintech_payment_reco.company_bank_oauth_grants
-            WHERE company_id = %s AND provider_slug = 'tbank_account'
+            WHERE company_id = %s AND provider_slug = 'tbank_account' AND NOT is_sandbox
         ''', (company_id,))
 
         row = cur.fetchone()
@@ -72,9 +72,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'isBase64Encoded': False
             }
 
-        access_token, is_sandbox = row
+        access_token = row[0]
 
-        company_info = fetch_company_info(access_token, is_sandbox)
+        company_info = fetch_company_info(access_token)
         if not company_info:
             return {
                 'statusCode': 200,
@@ -83,7 +83,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'isBase64Encoded': False
             }
 
-        accounts = fetch_accounts(access_token, is_sandbox) or []
+        accounts = fetch_accounts(access_token) or []
 
         return {
             'statusCode': 200,
@@ -92,7 +92,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'is_connected': True,
                 'company_name': company_info.get('name'),
                 'inn': company_info.get('requisites', {}).get('inn'),
-                'sandbox': is_sandbox,
                 'accounts': [
                     {
                         'account_number': acc.get('accountNumber'),

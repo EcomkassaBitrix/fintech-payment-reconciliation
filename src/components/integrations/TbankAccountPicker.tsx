@@ -22,7 +22,6 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
   const [isChecking, setIsChecking] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [companyName, setCompanyName] = useState('');
-  const [isSandbox, setIsSandbox] = useState(false);
   const [accounts, setAccounts] = useState<TbankAccount[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [tokenInput, setTokenInput] = useState('');
@@ -39,7 +38,6 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
       if (response.ok) {
         setIsConnected(!!data.is_connected);
         setCompanyName(data.company_name || '');
-        setIsSandbox(!!data.sandbox);
         setAccounts(data.accounts || []);
       }
     } catch {
@@ -184,9 +182,7 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
         <Label>Номер расчётного счёта</Label>
         <div className="flex items-center gap-2 text-xs text-success mb-1">
           <Icon name="ShieldCheck" size={14} />
-          {isSandbox
-            ? `Демо-режим песочницы — счета ${companyName || 'компании'} подтягиваются автоматически`
-            : `Токен подключён${companyName ? ` — ${companyName}` : ''}`}
+          {`Токен подключён${companyName ? ` — ${companyName}` : ''}`}
         </div>
         <Select value={accountNumber} onValueChange={onAccountNumberChange}>
           <SelectTrigger>
@@ -201,23 +197,14 @@ const TbankAccountPicker = ({ companyId, accountNumber, onAccountNumberChange }:
           </SelectContent>
         </Select>
         </div>
-        {isSandbox ? (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Сейчас загружаются тестовые операции банка. Чтобы грузить платежи с вашего счёта, подключите свой токен
-            </p>
-            {tokenForm}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={handleDisconnect}
-            disabled={isConnecting}
-            className="text-xs text-muted-foreground underline hover:text-foreground"
-          >
-            Отключить токен
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handleDisconnect}
+          disabled={isConnecting}
+          className="text-xs text-muted-foreground underline hover:text-foreground"
+        >
+          Отключить токен
+        </button>
       </div>
     );
   }

@@ -7,8 +7,7 @@ from tbank_oauth import (
     build_authorize_url,
     exchange_code_for_token,
     is_production_configured,
-    fetch_company_info,
-    SANDBOX_TOKEN
+    fetch_company_info
 )
 from auth_guard import guard
 
@@ -24,8 +23,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     OAuth-обвязка T-Business ID: подключение счёта компании владельцем через "Т-Бизнес".
     GET  ?action=authorize_url&company_id=..&redirect_uri=.. -> ссылка на согласие в Т-Банке
-         (если реальные партнёрские ключи ещё не выданы банком - сразу активирует
-         демо-режим песочницы для компании без перехода по внешней ссылке)
+         (пока партнёрские ключи банка не выданы - отвечает, что способ недоступен)
+    POST { action: save_token, company_id, token } -> проверка токена Т-Бизнес и сохранение
+    POST { action: disconnect, company_id } -> отключение токена
     POST { code, state, company_id, redirect_uri } -> обмен кода на токен, сохранение гранта
     '''
     denied = guard(event)
@@ -59,27 +59,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             if action == 'authorize_url':
                 if not is_production_configured():
-                    # Партнёрские ключи Т-Банка ещё не выданы - подключаем компанию
-                    # сразу в демо-режиме песочницы, чтобы можно было проверить сценарий
-                    # без ожидания одобрения банком (порог входа в T-ID - от 30 000 авторизаций/мес).
-                    cur.execute('''
-                        INSERT INTO t_p83864310_fintech_payment_reco.company_bank_oauth_grants
-                            (company_id, provider_slug, is_sandbox, access_token, scope)
-                        VALUES (%s, 'tbank_account', true, %s, 'accounts')
-                        ON CONFLICT (company_id, provider_slug) DO UPDATE SET
-                            is_sandbox = true, access_token = EXCLUDED.access_token, updated_at = NOW()
-                        RETURNING id
-                    ''', (company_id, SANDBOX_TOKEN))
-                    conn.commit()
-
                     return {
                         'statusCode': 200,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({
-                            'sandbox': True,
-                            'connected': True,
-                            'message': 'Партнёрские ключи Т-Банка ещё не выданы, подключено в демо-режиме песочницы'
-                        }),
+                        'body': json.dumps({'error': 'Партнёрская интеграция с Т-Банком пока недоступна — подключите токен'}, ensure_ascii=False),
                         'isBase64Encoded': False
                     }
 
@@ -87,7 +70,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'sandbox': False, 'authorize_url': url}),
+                    'body': json.dumps({'authorize_url': url}),
                     'isBase64Encoded': False
                 }
 
@@ -113,7 +96,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'Укажите токен Т-Бизнес'}, ensure_ascii=False),
                         'isBase64Encoded': False
                     }
-                company_info = fetch_company_info(token, False)
+                company_info = fetch_company_info(token)
                 if not company_info:
                     return {
                         'statusCode': 200,
