@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import Icon from '@/components/ui/icon';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -31,6 +32,15 @@ interface Props {
   onClose: () => void;
   onSave: (c: Coupon) => Promise<boolean>;
 }
+
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+const randomCode = () => {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  const chars = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+};
 
 const inMonth = () => {
   const d = new Date();
@@ -74,11 +84,17 @@ const CouponDialog = ({ open, coupon, tariffs, onClose, onSave }: Props) => {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>Название (промокод)</Label>
-            <Input
-              value={form.code}
-              placeholder="Например, START2026"
-              onChange={(e) => set('code', e.target.value.toUpperCase().replace(/[^A-ZА-ЯЁ0-9_-]/g, ''))}
-            />
+            <div className="flex gap-2">
+              <Input
+                value={form.code}
+                placeholder="Например, START2026"
+                onChange={(e) => set('code', e.target.value.toUpperCase().replace(/[^A-ZА-ЯЁ0-9_-]/g, ''))}
+              />
+              <Button type="button" variant="outline" className="shrink-0 gap-2" onClick={() => set('code', randomCode())}>
+                <Icon name="Shuffle" size={16} />
+                Придумать
+              </Button>
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Тариф</Label>
