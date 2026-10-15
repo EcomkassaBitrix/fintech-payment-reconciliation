@@ -143,7 +143,10 @@ def recover_missed_deals(cur, company_id: int) -> int:
             if deals:
                 # Копии роботом в другие воронки: берём сделку из воронки, выбранной в интеграции.
                 keep = _keep_one(deals, integrations)
-                return _target(integrations, keep), str(keep['ID'])
+                target = _target(integrations, keep)
+                if target:
+                    return target, str(keep['ID'])
+                print(f'crm recover skipped: deal {keep.get("ID")} - воронка {keep.get("CATEGORY_ID") or "0"} не выбрана в интеграциях')
         return None
 
     amo = _amo_accounts(cur, company_id)
@@ -214,8 +217,16 @@ def _bx_time(value: Any):
 
 
 def _target(integrations: List[Any], deal: Dict[str, Any]):
+    '''
+    Интеграция, в которую пишем сделку: та, у которой воронка сделки выбрана в настройках.
+    Если воронка не выбрана ни в одной интеграции - только интеграция без выбора воронок,
+    иначе None (сделку не берём).
+    '''
     category = str(deal.get('CATEGORY_ID') or '0')
-    return next((i for i in integrations if category in i[2]), integrations[0])
+    match = next((i for i in integrations if category in i[2] and (len(i) < 4 or i[3])), None)
+    if match:
+        return match
+    return next((i for i in integrations if len(i) > 3 and not i[3]), None)
 
 
 def _keep_one(group: List[Dict[str, Any]], integrations: List[Any]) -> Dict[str, Any]:
@@ -344,7 +355,12 @@ def recover_candidate_deals(cur, company_id: int) -> int:
                 if reason:
                     print(f'crm candidate skipped: deal {deal.get("ID")} for receipt {receipt_id} - {reason}')
                     continue
-                found_all.append((_target(integrations, deal), str(deal['ID']), receipt_id))
+                target = _target(integrations, deal)
+                if not target:
+                    print(f'crm candidate skipped: deal {deal.get("ID")} for receipt {receipt_id} - '
+                          f'воронка {deal.get("CATEGORY_ID") or "0"} не выбрана в интеграциях')
+                    continue
+                found_all.append((target, str(deal['ID']), receipt_id))
         for base, token, integrations in amo:
             paid_ts = int(paid_at.timestamp())
             window = CANDIDATE_WINDOW_MIN * 60
