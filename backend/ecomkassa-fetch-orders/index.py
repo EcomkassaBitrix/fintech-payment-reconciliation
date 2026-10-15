@@ -242,11 +242,11 @@ PAID_ORDER_STATUSES = {'PAID', 'COMPLETED'}
 
 
 def is_invoice_paid(item: Dict[str, Any], report_data: Dict[str, Any]) -> bool:
-    '''Счёт/заказ оплачен покупателем: статус документа PAID/COMPLETED или invoice_payload.status = done.'''
-    invoice_payload = report_data.get('invoice_payload')
-    if not isinstance(invoice_payload, dict) or not invoice_payload.get('provider'):
+    '''Счёт (INVC) оплачен покупателем: статус документа PAID или COMPLETED.'''
+    if item.get('orderType') != 'INVC' or item.get('status') not in PAID_ORDER_STATUSES:
         return False
-    return item.get('status') in PAID_ORDER_STATUSES or invoice_payload.get('status') == 'done'
+    invoice_payload = report_data.get('invoice_payload')
+    return isinstance(invoice_payload, dict) and bool(invoice_payload.get('provider'))
 
 
 def invoice_amount(item: Dict[str, Any], report_data: Dict[str, Any]) -> Optional[float]:
@@ -514,10 +514,10 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 if receipt_id:
                     inserted += 1
 
-            # Оплаченный счёт/заказ загружаем как платёж сразу, даже если касса ещё
+            # Оплаченный счёт (INVC) загружаем как платёж сразу, даже если касса ещё
             # не пробила чек - чек привяжется следующим тиком, когда станет done.
             invoice_paid = is_invoice_paid(item, report_data)
-            if invoice_paid:
+            if invoice_paid or (receipt_id and report_data.get('invoice_payload')):
                 if total_sum is None:
                     total_sum = invoice_amount(item, report_data)
                 gw_id = gateway_integration_id or integration_id
