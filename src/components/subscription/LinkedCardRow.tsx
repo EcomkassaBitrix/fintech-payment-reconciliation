@@ -45,8 +45,9 @@ const LinkedCardRow = ({ pan, provider = 'tbank', canManage, busy, onRemove }: L
           </span>
         </div>
         {canManage && (
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => setConfirm(true)}>
-            {busy ? <Icon name="Loader2" size={14} className="animate-spin" /> : 'Отключить'}
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => setConfirm(true)} className="gap-2">
+            {busy ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="Unlink" size={14} />}
+            Отвязать карту
           </Button>
         )}
       </div>
@@ -54,7 +55,7 @@ const LinkedCardRow = ({ pan, provider = 'tbank', canManage, busy, onRemove }: L
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Отключить карту •••{lastDigits(pan)}?</AlertDialogTitle>
+            <AlertDialogTitle>Отвязать карту •••{lastDigits(pan)}?</AlertDialogTitle>
             <AlertDialogDescription>
               Карта будет удалена, автопродление выключится. Подписка продолжит действовать до конца оплаченного срока,
               дальше её можно будет оплатить вручную.
@@ -66,7 +67,7 @@ const LinkedCardRow = ({ pan, provider = 'tbank', canManage, busy, onRemove }: L
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={onRemove}
             >
-              Отключить
+              Отвязать
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

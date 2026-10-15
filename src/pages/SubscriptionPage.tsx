@@ -284,9 +284,9 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
               <LinkedCardRow
                 pan={autopay.card.pan}
                 provider={autopay.card.provider}
-                canManage={canPay}
+                canManage={canCoupon}
                 busy={autopayBusy}
-                onRemove={() => updateAutopay({ action: 'remove_card' }, 'Карта отключена')}
+                onRemove={() => updateAutopay({ action: 'remove_card' }, 'Карта отвязана')}
               />
             )}
 

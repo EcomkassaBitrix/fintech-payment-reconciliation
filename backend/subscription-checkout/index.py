@@ -269,7 +269,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return respond(200, {'success': True, 'payment': result})
 
         if action in ('autopay', 'remove_card'):
-            if not can_pay:
+            if not (can_coupon if action == 'remove_card' else can_pay):
                 return respond(403, {'error': 'Управлять оплатой может только владелец или админ компании'})
             if action == 'remove_card':
                 cur.execute(f'''SELECT card_id, customer_key FROM {SCHEMA}.subscription_cards
