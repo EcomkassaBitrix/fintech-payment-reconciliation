@@ -20,7 +20,7 @@ interface AutomationJournalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const SOURCE_LABELS: Record<string, string> = { payment: 'Платёж', crm_deal: 'Сделка CRM', crm_lead: 'Лид Битрикс24' };
+const SOURCE_LABELS: Record<string, string> = { payment: 'Платёж', crm_deal: 'Сделка CRM', crm_lead: 'Лид Битрикс24', ecom_invoice: 'Счёт Екомкассы' };
 
 const FILTERS: { value: string; label: string }[] = [
   { value: '', label: 'Все' },

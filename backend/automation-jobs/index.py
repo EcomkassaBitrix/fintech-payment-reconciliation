@@ -7,6 +7,7 @@ import psycopg2
 from typing import Dict, Any, List
 
 from preparer import prepare, retry_delay, log
+from ecomkassa_client import company_cash_register, _call as ecom_call
 from actions import ACTIONS
 from cron_report import record_cron_run
 from auth_guard import guard, internal_headers
@@ -47,6 +48,7 @@ def mark_failed(cur, job: Dict[str, Any], message: str, attempts: int) -> None:
                CASE WHEN j.source_type = 'payment' THEN 'платёж #' || COALESCE(wp.payment_id, j.source_id)
                     WHEN j.source_type = 'crm_deal' THEN 'сделка CRM #' || j.source_id
                     WHEN j.source_type = 'crm_lead' THEN 'лид Битрикс24 #' || j.source_id
+                    WHEN j.source_type = 'ecom_invoice' THEN 'счёт Екомкассы ' || j.source_id
                     ELSE j.source_type || ' #' || j.source_id END ||
                ': ' || %s || '. Автоповторы закончились - повторите вручную в журнале автоматизации.',
                'automation', 'automation_job', j.id::text,
@@ -227,21 +229,32 @@ DISCREPANCY_WINDOW_HOURS = 72
 
 def enqueue_discrepancies(cur, conn, company_id) -> int:
     '''
-    Сценарий «Расхождение»: оплаченные платежи компании без чека кассы и ОФД, с оплаты которых
-    прошло не меньше delay_minutes сценария (и не больше окна). На каждый - задание на чек
-    (обычно коррекции) по корзине платежа. Один платёж - одно задание на сценарий.
+    Сценарий «Расхождение». Вид «Оплачен, но нет чека» (по умолчанию): оплаченные платежи компании
+    без чека кассы и ОФД, с оплаты которых прошло не меньше delay_minutes (и не больше окна).
+    Вид «Висит в ожидании оплаты»: счета Екомкассы в статусе «ожидает оплату» - см. enqueue_pending_invoices.
+    Один платёж - одно задание на сценарий.
     '''
     if not company_id:
         return 0
     cur.execute(f'''
-        SELECT id, COALESCE((field_mapping->>'delay_minutes')::int, 60)
+        SELECT id, COALESCE((field_mapping->>'delay_minutes')::int, 60),
+               COALESCE(field_mapping->>'discrepancy_kind', 'missing_receipt'),
+               COALESCE((field_mapping->>'lookback_days')::int, 3)
         FROM {SCHEMA}.automation_scenarios
         WHERE company_id = %s AND trigger_type = 'discrepancy' AND status = 'active' AND removed_at IS NULL
     ''', (company_id,))
-    scenarios = cur.fetchall()
-    if not scenarios:
-        return 0
+    rows = cur.fetchall()
+    scenarios = [(sid, d) for sid, d, kind, _ in rows if kind != 'pending_invoice']
+    invoice_scenarios = [(sid, d, lb) for sid, d, kind, lb in rows if kind == 'pending_invoice']
     created = 0
+    if invoice_scenarios:
+        try:
+            created += enqueue_pending_invoices(cur, conn, company_id, invoice_scenarios)
+        except Exception as e:
+            conn.rollback()
+            print(f'pending invoices scan failed: {e}')
+    if not scenarios:
+        return created
     min_delay = min(d for _, d in scenarios)
     url = (f'{TRANSACTIONS_URL}?company_id={company_id}&paged=1&missing_receipts=1'
            f'&older_than_min={min_delay}&newer_than_hours={DISCREPANCY_WINDOW_HOURS}')
@@ -265,6 +278,81 @@ def enqueue_discrepancies(cur, conn, company_id) -> int:
                 created += 1
                 log(cur, row[0], 'info',
                     f"Расхождение: платёж {p.get('title')} на {float(p.get('amount') or 0):.2f} ₽ без чека дольше {delay} мин")
+    conn.commit()
+    return created
+
+
+# Статусы счёта Екомкассы «ожидает оплату» и пауза перед повторной проверкой неоплаченного счёта.
+PENDING_INVOICE_STATUSES = {'CREATED', 'WAITING'}
+INVOICE_RECHECK_HOURS = 6
+INVOICE_SEARCH_PAGES = 4
+
+
+def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
+    '''
+    Счета (INVC) Екомкассы, которые дольше delay_minutes висят в «ожидает оплату» (за lookback_days).
+    Задание на каждый счёт; оплату проверяем в эквайринге по номеру заказа (UUID счёта) уже в задании.
+    Неоплаченный счёт (задание «Пропущен») перепроверяем не чаще раза в INVOICE_RECHECK_HOURS.
+    '''
+    kassa = company_cash_register(cur, company_id)
+    if not kassa:
+        return 0
+    lookback = max(1, min(max(lb for _, _, lb in scenarios), 31))
+    since = (datetime.utcnow() - timedelta(days=lookback)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    items = []
+    for page in range(INVOICE_SEARCH_PAGES):
+        status, data = ecom_call(kassa, 'POST', '/api/mobile/v1/orders/search',
+                                 {'since': since, 'orderTypes': ['INVC'], 'offset': page * 500, 'limit': 500})
+        batch = (data or {}).get('result') if status == 200 and isinstance(data, dict) else None
+        if not isinstance(batch, list):
+            print(f'ecomkassa search failed: {status} {str(data)[:200]}')
+            break
+        items += batch
+        if len(batch) < 500:
+            break
+    pending = [i for i in items if i.get('orderId') and str(i.get('status')) in PENDING_INVOICE_STATUSES]
+    now_utc = datetime.utcnow()
+    created = 0
+    for scenario_id, delay, lb in scenarios:
+        border = now_utc - timedelta(days=lb)
+        for item in pending:
+            try:
+                updated = datetime.fromisoformat(str(item.get('updated')).replace('Z', '+00:00')).replace(tzinfo=None)
+            except (TypeError, ValueError):
+                updated = None
+            if updated and (updated > now_utc - timedelta(minutes=delay) or updated < border):
+                continue
+            uid = str(item['orderId'])
+            payload = {'reason': 'pending_invoice', 'invoice_uuid': uid, 'amount': item.get('total'),
+                       'external_id': item.get('externalId'), 'updated': item.get('updated')}
+            cur.execute(f'''
+                SELECT id, status, updated_at < NOW() - INTERVAL '{INVOICE_RECHECK_HOURS} hours'
+                FROM {SCHEMA}.automation_jobs WHERE scenario_id = %s AND payload->>'invoice_uuid' = %s
+            ''', (scenario_id, uid))
+            existing = cur.fetchone()
+            if existing:
+                if existing[1] == 'skipped' and existing[2] and existing[0]:
+                    cur.execute(f'''
+                        UPDATE {SCHEMA}.automation_jobs SET status = 'new', step = 'prepare', attempts = 0,
+                               next_attempt_at = NOW(), last_error = NULL, updated_at = NOW()
+                        WHERE id = %s AND source_type = 'ecom_invoice'
+                        RETURNING id
+                    ''', (existing[0],))
+                    if cur.fetchone():
+                        log(cur, existing[0], 'info', f'Счёт {uid} всё ещё ждёт оплату - проверяем снова')
+                continue
+            cur.execute(f'''
+                INSERT INTO {SCHEMA}.automation_jobs (company_id, scenario_id, source_type, source_id, payload)
+                VALUES (%s, %s, 'ecom_invoice', %s, %s)
+                ON CONFLICT (scenario_id, source_type, source_id) DO NOTHING
+                RETURNING id
+            ''', (company_id, scenario_id, uid, json.dumps(payload, ensure_ascii=False)))
+            row = cur.fetchone()
+            if row:
+                created += 1
+                log(cur, row[0], 'info',
+                    f"Расхождение: счёт Екомкассы {uid} на {float(item.get('total') or 0):.2f} ₽ "
+                    f"висит в «ожидает оплату» - проверим оплату в эквайринге")
     conn.commit()
     return created
 

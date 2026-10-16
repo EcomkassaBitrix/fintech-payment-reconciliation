@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from ecomkassa_client import company_cash_register, get_receipt_atol
@@ -9,6 +10,7 @@ import yookassa_api
 import tochka_acquiring_api
 import moyklass_crm
 import realtycalendar_crm
+import payment_verify
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 
@@ -179,6 +181,76 @@ CART_FROM_PROVIDER = {'tbank': 'Т-Банк', 'alfabank': 'Альфа-Банк',
                       'cloudpayments': 'CloudPayments'}
 
 
+def _gateway_integration(cur, company_id: int) -> Optional[int]:
+    cur.execute(f'''
+        SELECT ui.id FROM {SCHEMA}.user_integrations ui
+        JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
+        WHERE ui.company_id = %s AND p.slug IN ('ecomkassa_gateway', 'ecomkassa') AND ui.status = 'active'
+        ORDER BY (p.slug = 'ecomkassa_gateway') DESC, ui.id LIMIT 1
+    ''', (company_id,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def _prepare_pending_invoice(cur, job: Dict[str, Any]) -> Optional[Tuple[str, Dict[str, Any], str]]:
+    '''
+    Счёт Екомкассы завис в «ожидает оплату». Проверяем оплату в эквайринге по номеру заказа (= UUID счёта).
+    Оплачен - заводим у нас оплаченный платёж шлюза и дальше задание идёт как обычное расхождение
+    (чек по корзине счёта). Не оплачен - пропуск (перепроверим позже). Нет ответа - повтор.
+    None - задание переведено на платёж, продолжаем обычную подготовку.
+    '''
+    payload = job.get('payload') or {}
+    uid = str(payload.get('invoice_uuid') or job['source_id'])
+    info = {'invoice_uuid': uid}
+    cur.execute(f'''
+        SELECT EXISTS (SELECT 1 FROM {SCHEMA}.ecomkassa_receipts
+                       WHERE company_id = %s AND order_id = %s AND status = 'done' AND removed_at IS NULL)
+    ''', (job['company_id'], uid))
+    if cur.fetchone()[0]:
+        return 'skipped', info, f'По счёту {uid} в Екомкассе уже есть пробитый чек - коррекция не нужна'
+    verdict, message, paid = payment_verify.verify_order(cur, job['company_id'], uid)
+    if verdict == 'not_paid':
+        return 'skipped', info, f'Проверка в платёжной системе: {message} - чек не нужен, перепроверим позже'
+    if verdict != 'paid':
+        return 'error', info, f'Проверка в платёжной системе: {message}'
+    integration_id = _gateway_integration(cur, job['company_id'])
+    if not integration_id:
+        return 'error', info, 'Нет активной интеграции Екомкассы, к которой привязать платёж'
+    amount = float(paid.get('amount') or payload.get('amount') or 0)
+    try:
+        paid_at = datetime.fromisoformat(str(payload.get('updated')).replace('Z', '+00:00'))
+        paid_at = paid_at.astimezone(timezone.utc).replace(tzinfo=None) if paid_at.tzinfo else paid_at
+    except (TypeError, ValueError):
+        paid_at = None
+    cur.execute(f'''
+        INSERT INTO {SCHEMA}.webhook_payments (integration_id, company_id, payment_id, amount, order_id, status,
+                                               raw_data, payment_provider, origin, created_at)
+        VALUES (%s, %s, %s, %s, %s, 'CONFIRMED', %s, %s, 'automation',
+                COALESCE(%s, NOW()))
+        ON CONFLICT (integration_id, payment_id, status) DO UPDATE SET
+            amount = CASE WHEN {SCHEMA}.webhook_payments.amount = 0 THEN EXCLUDED.amount ELSE {SCHEMA}.webhook_payments.amount END
+        RETURNING id
+    ''', (integration_id, job['company_id'], uid, amount, uid,
+          json.dumps({'source': 'verify', 'invoice_uuid': uid, 'verified': paid}, ensure_ascii=False),
+          paid.get('system'), paid_at))
+    row_id = cur.fetchone()[0]
+    cur.execute(f'''
+        UPDATE {SCHEMA}.automation_jobs SET source_type = 'payment', source_id = %s,
+               payload = payload || %s::jsonb, updated_at = NOW()
+        WHERE id = %s AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.automation_jobs
+                                      WHERE scenario_id = %s AND source_type = 'payment' AND source_id = %s)
+        RETURNING id
+    ''', (str(row_id), json.dumps({'reason': 'discrepancy', 'webhook_payment_id': row_id,
+                                     'verified_by': paid.get('system')}, ensure_ascii=False),
+          job['id'], job['scenario_id'], str(row_id)))
+    if not cur.fetchone():
+        return 'skipped', info, f'По платежу счёта {uid} уже есть другое задание сценария'
+    log(cur, job['id'], 'info', f'Проверка в платёжной системе: {message}. Платёж отмечен у нас как оплаченный')
+    job.update({'source_type': 'payment', 'source_id': str(row_id), 'verified': True,
+                'payload': {**payload, 'reason': 'discrepancy', 'webhook_payment_id': row_id}})
+    return None
+
+
 def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Dict[str, Any], str]:
     '''
     Сбор данных для действия сценария. Возвращает (статус, данные, сообщение в журнал):
@@ -187,6 +259,10 @@ def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Di
     '''
     if job['source_type'] in ('crm_deal', 'crm_lead'):
         return prepare_crm(cur, job, scenario)
+    if job['source_type'] == 'ecom_invoice':
+        converted = _prepare_pending_invoice(cur, job)
+        if converted:
+            return converted
     if job['source_type'] != 'payment':
         return 'error', {}, f"Источник «{job['source_type']}» пока не поддерживается"
 
@@ -240,6 +316,13 @@ def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Di
             has_receipt = bool(cur.fetchone()[0])
         if has_receipt:
             return 'skipped', {'payment': payment}, 'Чек по платежу уже есть или его пробивает другое задание - второй не нужен'
+        if (scenario.get('field_mapping') or {}).get('verify_mode') == 'payment_system' and not job.get('verified'):
+            verdict, message, _ = payment_verify.verify_payment(cur, job['company_id'], payment)
+            if verdict == 'not_paid':
+                return 'skipped', {'payment': payment}, f'Проверка в платёжной системе: {message} - чек не нужен'
+            if verdict != 'paid':
+                return 'error', {'payment': payment}, f'Проверка в платёжной системе: {message}'
+            log(cur, job['id'], 'info', f'Проверка в платёжной системе: {message}')
 
     data: Dict[str, Any] = {
         'payment': payment,

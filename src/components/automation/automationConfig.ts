@@ -52,7 +52,7 @@ export interface IntegrationOption {
 export const TRIGGERS: Record<TriggerType, { label: string; icon: string; description: string; sourceCategories: string[] | null; needsMapping: boolean; actions?: ActionType[] }> = {
   new_payment: { label: 'Новый платёж', icon: 'CreditCard', description: 'Пришёл вебхук об оплате от эквайринга или платёж из «Мой Класс» / RealtyCalendar', sourceCategories: ['payments', 'moyklass', 'realtycalendar'], needsMapping: false },
   crm_order: { label: 'Заказ в CRM', icon: 'Users', description: 'Сделка или заказ в CRM перешли в нужную стадию', sourceCategories: ['crm'], needsMapping: true },
-  discrepancy: { label: 'Расхождение', icon: 'TriangleAlert', description: 'Оплаченный платёж так и не получил чек — пробиваем чек (обычно коррекции) по его корзине', sourceCategories: null, needsMapping: false, actions: ['create_receipt'] }
+  discrepancy: { label: 'Расхождение', icon: 'TriangleAlert', description: 'Платёж без чека или зависший счёт — проверяем оплату и пробиваем чек (обычно коррекции)', sourceCategories: null, needsMapping: false, actions: ['create_receipt'] }
 };
 
 export const ACTIONS: Record<ActionType, { label: string; icon: string }> = {
@@ -109,6 +109,26 @@ export const DISCREPANCY_DELAY_OPTIONS = [
   { value: 1440, label: '1 сутки' }
 ];
 export const DEFAULT_DISCREPANCY_DELAY = 60;
+
+export type DiscrepancyKind = 'missing_receipt' | 'pending_invoice';
+export const DISCREPANCY_KINDS: { value: DiscrepancyKind; label: string; description: string }[] = [
+  { value: 'missing_receipt', label: 'Оплачен, но нет чека', description: 'Платёж у нас оплачен, а ни чека кассы, ни чека ОФД нет' },
+  { value: 'pending_invoice', label: 'Висит в ожидании оплаты', description: 'Счёт Екомкассы остаётся «ожидает оплату», хотя деньги могли прийти' }
+];
+
+export type VerifyMode = 'none' | 'payment_system';
+export const VERIFY_MODES: { value: VerifyMode; label: string; description: string }[] = [
+  { value: 'none', label: 'Без проверки', description: 'Чек пробивается сразу, как нашли расхождение' },
+  { value: 'payment_system', label: 'Проверка в платёжной системе', description: 'Сначала спрашиваем статус у эквайринга — чек только если там «оплачен»' }
+];
+
+export const LOOKBACK_OPTIONS = [
+  { value: 1, label: '1 день' },
+  { value: 3, label: '3 дня' },
+  { value: 7, label: '7 дней' },
+  { value: 14, label: '14 дней' },
+  { value: 31, label: '31 день' }
+];
 
 // Сопоставление полей CRM для сценария «Заказ в CRM» (хранится в field_mapping сценария).
 // Ссылка на поле - «объект.КОД»: deal.OPPORTUNITY, contact.EMAIL, company.UF_CRM_123.

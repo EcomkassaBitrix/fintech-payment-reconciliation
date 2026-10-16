@@ -126,6 +126,20 @@ def validate(cur, company_id: int, body: Dict[str, Any]) -> Optional[str]:
             return 'Укажите, через сколько минут после оплаты считать, что чека нет'
         if delay < 5 or delay > 10080:
             return 'Задержка расхождения - от 5 минут до 7 суток'
+        kind = mapping.get('discrepancy_kind') or 'missing_receipt'
+        if kind not in ('missing_receipt', 'pending_invoice'):
+            return 'Неизвестный вид расхождения'
+        if (mapping.get('verify_mode') or 'none') not in ('none', 'payment_system'):
+            return 'Неизвестный тип проверки'
+        if kind == 'pending_invoice':
+            if mapping.get('verify_mode') != 'payment_system':
+                return 'Для счетов «ожидает оплату» нужна проверка в платёжной системе'
+            try:
+                lookback = int(mapping.get('lookback_days') or 3)
+            except (TypeError, ValueError):
+                return 'Укажите, за сколько дней смотреть счета'
+            if lookback < 1 or lookback > 31:
+                return 'Счета можно смотреть за период от 1 до 31 дня'
     if trigger == 'crm_order':
         if mapping.get('entity', 'deal') not in ('deal', 'lead'):
             return 'Выберите объект CRM: сделки или лиды'
