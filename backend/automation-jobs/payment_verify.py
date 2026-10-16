@@ -144,3 +144,39 @@ def verify_payment(cur, company_id: int, payment: Dict[str, Any]) -> Verdict:
             return 'not_paid', f"{label}: платёж #{payment['payment_id']} в статусе {info.get('status')} - не оплачен", {}
         return 'not_paid', f"{label}: платёж #{payment['payment_id']} не найден", {}
     return 'unknown', 'Для этой платёжной системы проверка статуса пока недоступна', {}
+
+
+BANK_LABELS = {'tbank_account': 'Т-Банк', 'tochka_account': 'Точка', 'modulbank_account': 'Модульбанк'}
+MIN_REF_LEN = 5
+
+
+def verify_bank(cur, company_id: int, refs: List[Any], payment_row_ids: List[int]) -> Verdict:
+    '''
+    Поиск денег в выписках подключённых расчётных счетов: входящее поступление, где в назначении
+    платежа есть номер платежа/заказа, или уже привязанное к этому платежу зачисление.
+    Выписка обновляется по расписанию банка - поступления за последние часы может ещё не быть.
+    '''
+    cur.execute(f'''
+        SELECT COUNT(*) FROM {SCHEMA}.user_integrations ui
+        JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
+        WHERE ui.company_id = %s AND p.slug IN ('tbank_account', 'tochka_account', 'modulbank_account') AND ui.status = 'active'
+    ''', (company_id,))
+    if not cur.fetchone()[0]:
+        return 'unknown', 'Не подключён расчётный счёт - проверять в банке нечем', {}
+    clean = sorted({str(r).strip() for r in refs if r and len(str(r).strip()) >= MIN_REF_LEN})
+    patterns = ['%' + r.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%' for r in clean]
+    cur.execute(f'''
+        SELECT id, provider_slug, amount, operation_date, purpose FROM {SCHEMA}.bank_statement_transactions
+        WHERE company_id = %s AND removed_at IS NULL AND direction = 'in'
+          AND (linked_payment_id = ANY(%s) OR purpose ILIKE ANY(%s))
+        ORDER BY operation_date DESC LIMIT 1
+    ''', (company_id, payment_row_ids or [0], patterns or ['']))
+    row = cur.fetchone()
+    if row:
+        label = BANK_LABELS.get(row[1], 'Банк')
+        date = row[3].strftime('%d.%m.%Y') if row[3] else '—'
+        return 'paid', (f'{label}: поступление {float(row[2] or 0):.2f} ₽ от {date} '
+                        f"(«{str(row[4] or '')[:80]}»)"), {'amount': float(row[2] or 0), 'system': f'{label} (выписка)',
+                                                         'bank_tx_id': row[0]}
+    shown = ', '.join(clean) or 'номера нет'
+    return 'not_paid', f'В выписке нет поступления с номером {shown}', {}

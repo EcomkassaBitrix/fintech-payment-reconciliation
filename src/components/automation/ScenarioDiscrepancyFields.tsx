@@ -15,6 +15,8 @@ interface Props {
   mapping: Record<string, unknown>;
   onChange: (patch: Record<string, unknown>) => void;
   startStep: number;
+  hasPayments: boolean;
+  hasBanks: boolean;
 }
 
 const OptionCards = <T extends string>({
@@ -26,30 +28,30 @@ const OptionCards = <T extends string>({
   options: { value: T; label: string; description: string }[];
   value: T;
   onSelect: (v: T) => void;
-  disabled?: (v: T) => boolean;
+  disabled?: (v: T) => string | false;
 }) => (
-  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+  <div className={`grid grid-cols-1 gap-2 ${options.length > 2 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
     {options.map((o) => {
       const off = disabled?.(o.value);
       return (
         <button
           key={o.value}
           type="button"
-          disabled={off}
+          disabled={!!off}
           onClick={() => onSelect(o.value)}
           className={`rounded-lg border-2 px-3 py-2.5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
             value === o.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
           }`}
         >
           <span className="block text-sm font-medium">{o.label}</span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">{o.description}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">{off || o.description}</span>
         </button>
       );
     })}
   </div>
 );
 
-const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep }: Props) => {
+const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep, hasPayments, hasBanks }: Props) => {
   const kind = (mapping.discrepancy_kind as DiscrepancyKind) || 'missing_receipt';
   const verify = (mapping.verify_mode as VerifyMode) || 'none';
   const delay = Number(mapping.delay_minutes) || DEFAULT_DISCREPANCY_DELAY;
@@ -63,7 +65,11 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep }: Props) => {
           options={DISCREPANCY_KINDS}
           value={kind}
           onSelect={(v) =>
-            onChange(v === 'pending_invoice' ? { discrepancy_kind: v, verify_mode: 'payment_system', lookback_days: lookback } : { discrepancy_kind: v })
+            onChange(
+              v === 'pending_invoice'
+                ? { discrepancy_kind: v, verify_mode: verify !== 'none' ? verify : hasPayments || !hasBanks ? 'payment_system' : 'bank', lookback_days: lookback }
+                : { discrepancy_kind: v }
+            )
           }
         />
       </ScenarioStep>
@@ -112,8 +118,25 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep }: Props) => {
           options={VERIFY_MODES}
           value={verify}
           onSelect={(v) => onChange({ verify_mode: v })}
-          disabled={(v) => isInvoice && v === 'none'}
+          disabled={(v) =>
+            v === 'none'
+              ? isInvoice && 'Для зависших счетов нужна проверка'
+              : v === 'payment_system'
+                ? !hasPayments && 'Подключите платёжную систему в разделе «Платежи»'
+                : !hasBanks && 'Подключите расчётный счёт в разделе «Банки»'
+          }
         />
+        {verify === 'bank' && (
+          <div className="flex gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <Icon name="Landmark" size={16} className="mt-0.5 shrink-0 text-primary" />
+            <div className="space-y-1">
+              <p>
+                Ищем в выписках подключённых расчётных счетов входящее поступление, в назначении которого есть {isInvoice ? 'номер счёта Екомкассы' : 'номер платежа или заказа'}, или зачисление, уже привязанное к платежу в сверке.
+              </p>
+              <p>Нашли — пробиваем чек. Не нашли — чек не пробиваем. Выписка обновляется по расписанию банка, поэтому свежих поступлений в ней может ещё не быть.</p>
+            </div>
+          </div>
+        )}
         {verify === 'payment_system' && (
           <div className="flex gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
             <Icon name="ShieldCheck" size={16} className="mt-0.5 shrink-0 text-primary" />

@@ -116,10 +116,11 @@ export const DISCREPANCY_KINDS: { value: DiscrepancyKind; label: string; descrip
   { value: 'pending_invoice', label: 'Висит в ожидании оплаты', description: 'Счёт Екомкассы остаётся «ожидает оплату», хотя деньги могли прийти' }
 ];
 
-export type VerifyMode = 'none' | 'payment_system';
+export type VerifyMode = 'none' | 'payment_system' | 'bank';
 export const VERIFY_MODES: { value: VerifyMode; label: string; description: string }[] = [
   { value: 'none', label: 'Без проверки', description: 'Чек пробивается сразу, как нашли расхождение' },
-  { value: 'payment_system', label: 'Проверка в платёжной системе', description: 'Сначала спрашиваем статус у эквайринга — чек только если там «оплачен»' }
+  { value: 'payment_system', label: 'Проверка в платёжной системе', description: 'Спрашиваем статус у эквайринга — чек только если там «оплачен»' },
+  { value: 'bank', label: 'Проверка в банке', description: 'Ищем поступление с номером платежа в выписке расчётного счёта' }
 ];
 
 export const LOOKBACK_OPTIONS: { value: number | 'year'; label: string }[] = [

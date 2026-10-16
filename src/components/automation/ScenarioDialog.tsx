@@ -279,6 +279,8 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
               mapping={form.field_mapping}
               onChange={(patch) => setForm({ ...form, field_mapping: { ...form.field_mapping, ...patch } })}
               startStep={(step += 3) - 3}
+              hasPayments={integrations.some((i) => i.category === 'payments')}
+              hasBanks={integrations.some((i) => i.category === 'banks')}
             />
           )}
 

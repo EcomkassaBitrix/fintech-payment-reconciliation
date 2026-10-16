@@ -192,7 +192,7 @@ def _gateway_integration(cur, company_id: int) -> Optional[int]:
     return row[0] if row else None
 
 
-def _prepare_pending_invoice(cur, job: Dict[str, Any]) -> Optional[Tuple[str, Dict[str, Any], str]]:
+def _prepare_pending_invoice(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Optional[Tuple[str, Dict[str, Any], str]]:
     '''
     Счёт Екомкассы завис в «ожидает оплату». Проверяем оплату в эквайринге по номеру заказа (= UUID счёта).
     Оплачен - заводим у нас оплаченный платёж шлюза и дальше задание идёт как обычное расхождение
@@ -208,11 +208,16 @@ def _prepare_pending_invoice(cur, job: Dict[str, Any]) -> Optional[Tuple[str, Di
     ''', (job['company_id'], uid))
     if cur.fetchone()[0]:
         return 'skipped', info, f'По счёту {uid} в Екомкассе уже есть пробитый чек - коррекция не нужна'
-    verdict, message, paid = payment_verify.verify_order(cur, job['company_id'], uid)
+    if (scenario.get('field_mapping') or {}).get('verify_mode') == 'bank':
+        where = 'Проверка в банке'
+        verdict, message, paid = payment_verify.verify_bank(cur, job['company_id'], [uid, payload.get('external_id')], [])
+    else:
+        where = 'Проверка в платёжной системе'
+        verdict, message, paid = payment_verify.verify_order(cur, job['company_id'], uid)
     if verdict == 'not_paid':
-        return 'skipped', info, f'Проверка в платёжной системе: {message} - чек не нужен, перепроверим позже'
+        return 'skipped', info, f'{where}: {message} - чек не нужен, перепроверим позже'
     if verdict != 'paid':
-        return 'error', info, f'Проверка в платёжной системе: {message}'
+        return 'error', info, f'{where}: {message}'
     integration_id = _gateway_integration(cur, job['company_id'])
     if not integration_id:
         return 'error', info, 'Нет активной интеграции Екомкассы, к которой привязать платёж'
@@ -245,7 +250,7 @@ def _prepare_pending_invoice(cur, job: Dict[str, Any]) -> Optional[Tuple[str, Di
           job['id'], job['scenario_id'], str(row_id)))
     if not cur.fetchone():
         return 'skipped', info, f'По платежу счёта {uid} уже есть другое задание сценария'
-    log(cur, job['id'], 'info', f'Проверка в платёжной системе: {message}. Платёж отмечен у нас как оплаченный')
+    log(cur, job['id'], 'info', f'{where}: {message}. Платёж отмечен у нас как оплаченный')
     job.update({'source_type': 'payment', 'source_id': str(row_id), 'verified': True,
                 'payload': {**payload, 'reason': 'discrepancy', 'webhook_payment_id': row_id}})
     return None
@@ -260,7 +265,7 @@ def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Di
     if job['source_type'] in ('crm_deal', 'crm_lead'):
         return prepare_crm(cur, job, scenario)
     if job['source_type'] == 'ecom_invoice':
-        converted = _prepare_pending_invoice(cur, job)
+        converted = _prepare_pending_invoice(cur, job, scenario)
         if converted:
             return converted
     if job['source_type'] != 'payment':
@@ -316,13 +321,19 @@ def prepare(cur, job: Dict[str, Any], scenario: Dict[str, Any]) -> Tuple[str, Di
             has_receipt = bool(cur.fetchone()[0])
         if has_receipt:
             return 'skipped', {'payment': payment}, 'Чек по платежу уже есть или его пробивает другое задание - второй не нужен'
-        if (scenario.get('field_mapping') or {}).get('verify_mode') == 'payment_system' and not job.get('verified'):
-            verdict, message, _ = payment_verify.verify_payment(cur, job['company_id'], payment)
+        mode = (scenario.get('field_mapping') or {}).get('verify_mode')
+        if mode in ('payment_system', 'bank') and not job.get('verified'):
+            if mode == 'bank':
+                verdict, message, _ = payment_verify.verify_bank(
+                    cur, job['company_id'], [payment['payment_id'], payment.get('order_id')], [payment['id']])
+            else:
+                verdict, message, _ = payment_verify.verify_payment(cur, job['company_id'], payment)
+            where = 'Проверка в банке' if mode == 'bank' else 'Проверка в платёжной системе'
             if verdict == 'not_paid':
-                return 'skipped', {'payment': payment}, f'Проверка в платёжной системе: {message} - чек не нужен'
+                return 'skipped', {'payment': payment}, f'{where}: {message} - чек не пробиваем'
             if verdict != 'paid':
-                return 'error', {'payment': payment}, f'Проверка в платёжной системе: {message}'
-            log(cur, job['id'], 'info', f'Проверка в платёжной системе: {message}')
+                return 'error', {'payment': payment}, f'{where}: {message}'
+            log(cur, job['id'], 'info', f'{where}: {message}')
 
     data: Dict[str, Any] = {
         'payment': payment,
