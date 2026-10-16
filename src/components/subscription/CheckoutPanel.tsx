@@ -114,6 +114,16 @@ const CheckoutPanel = ({
                 >
                   Условия оплаты и возврата
                 </a>
+                {' · '}
+                <a
+                  href="/offer"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Публичная оферта
+                </a>
               </span>
             </span>
           </span>

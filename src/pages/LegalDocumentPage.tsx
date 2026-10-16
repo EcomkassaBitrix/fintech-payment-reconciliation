@@ -3,18 +3,19 @@ import { Link } from 'react-router-dom';
 import Icon from '@/components/ui/icon';
 import LandingFooter from '@/components/landing/LandingFooter';
 import functionUrls from '../../backend/func2url.json';
-import { LEGAL_EMAIL, LEGAL_SITE, LegalOperator, LegalSection, PAYMENT_TERMS, PRIVACY_POLICY, TERMS, operatorTitle } from '@/content/legalDocuments';
+import { LEGAL_BANK, LEGAL_EMAIL, LEGAL_SITE, LegalOperator, LegalSection, OFFER, OFFER_PREAMBLE, PAYMENT_TERMS, PRIVACY_POLICY, TERMS, operatorTitle } from '@/content/legalDocuments';
 
-type LegalDoc = 'terms' | 'privacy' | 'payment';
+type LegalDoc = 'terms' | 'privacy' | 'payment' | 'offer';
 
-const DOCUMENTS: Record<LegalDoc, { title: string; sections: LegalSection[] }> = {
+const DOCUMENTS: Record<LegalDoc, { title: string; sections: LegalSection[]; preamble?: string[] }> = {
+  offer: { title: 'Публичная оферта', sections: OFFER, preamble: OFFER_PREAMBLE },
   terms: { title: 'Пользовательское соглашение', sections: TERMS },
   privacy: { title: 'Политика в отношении обработки персональных данных', sections: PRIVACY_POLICY },
   payment: { title: 'Оплата, возврат и безопасность платежей', sections: PAYMENT_TERMS }
 };
 
 const LegalDocumentPage = ({ doc }: { doc: LegalDoc }) => {
-  const { title, sections } = DOCUMENTS[doc];
+  const { title, sections, preamble } = DOCUMENTS[doc];
   const [operator, setOperator] = useState<LegalOperator | null>(null);
 
   useEffect(() => {
@@ -46,6 +47,9 @@ const LegalDocumentPage = ({ doc }: { doc: LegalDoc }) => {
             <span className="font-display text-lg font-bold text-foreground">Сверка</span>
           </Link>
           <nav className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs sm:text-sm">
+            <Link to="/offer" className={doc === 'offer' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
+              Оферта
+            </Link>
             <Link to="/terms" className={doc === 'terms' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
               Соглашение
             </Link>
@@ -62,6 +66,13 @@ const LegalDocumentPage = ({ doc }: { doc: LegalDoc }) => {
       <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
         <div className="mb-2 text-sm text-muted-foreground">Документы</div>
         <h1 className="mb-8 font-display text-3xl font-bold text-foreground">{title}</h1>
+        {preamble && (
+          <div className="mb-8 space-y-2 text-sm leading-relaxed text-muted-foreground">
+            {preamble.map((item, i) => (
+              <p key={i} className={i === 0 ? 'font-medium text-foreground' : undefined}>{fill(item)}</p>
+            ))}
+          </div>
+        )}
         <div className="space-y-8">
           {sections.map((s) => (
             <section key={s.title}>
@@ -75,7 +86,9 @@ const LegalDocumentPage = ({ doc }: { doc: LegalDoc }) => {
           ))}
 
           <section className="rounded-xl border border-border bg-card p-5">
-            <h2 className="mb-3 text-lg font-semibold text-foreground">Реквизиты Оператора</h2>
+            <h2 className="mb-3 text-lg font-semibold text-foreground">
+              {doc === 'offer' ? '15. Реквизиты Лицензиара' : 'Реквизиты Оператора'}
+            </h2>
             <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr]">
               <dt className="text-muted-foreground">Наименование</dt>
               <dd className="text-foreground">{operatorTitle(operator).replace(/ \((ОГРНИП|ОГРН) .*\)$/, '')}</dd>
@@ -107,6 +120,18 @@ const LegalDocumentPage = ({ doc }: { doc: LegalDoc }) => {
                   <dd>
                     <a href={`tel:${phone.replace(/[^\d+]/g, '')}`} className="text-primary hover:underline">{phone}</a>
                   </dd>
+                </>
+              )}
+              {doc === 'offer' && (
+                <>
+                  <dt className="text-muted-foreground">Расчётный счёт</dt>
+                  <dd className="text-foreground">{LEGAL_BANK.account}</dd>
+                  <dt className="text-muted-foreground">Банк</dt>
+                  <dd className="text-foreground">{LEGAL_BANK.bank}</dd>
+                  <dt className="text-muted-foreground">БИК</dt>
+                  <dd className="text-foreground">{LEGAL_BANK.bik}</dd>
+                  <dt className="text-muted-foreground">Корр. счёт</dt>
+                  <dd className="text-foreground">{LEGAL_BANK.corr}</dd>
                 </>
               )}
               <dt className="text-muted-foreground">Сайт</dt>

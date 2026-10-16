@@ -45,6 +45,7 @@ const App = () => (
               <Route path="/promo/:code" element={<PromoLinkPage />} />
               <Route path="/oauth/tochka" element={<TochkaOAuthCallback />} />
               <Route path="/oauth/yookassa" element={<YookassaOAuthCallback />} />
+              <Route path="/offer" element={<LegalDocumentPage doc="offer" />} />
               <Route path="/terms" element={<LegalDocumentPage doc="terms" />} />
               <Route path="/legal" element={<LegalDocumentPage doc="privacy" />} />
               <Route path="/payment" element={<LegalDocumentPage doc="payment" />} />
