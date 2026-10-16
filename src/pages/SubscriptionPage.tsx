@@ -233,7 +233,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
         const opened = openPaymentPage(data.payment_url);
         setPaymentLink({ url: data.payment_url, id: data.payment_id });
         setPlanSheet(false);
-        if (!opened) toast({ title: 'Браузер заблокировал новую вкладку', description: 'Нажмите «Перейти к оплате»' });
+        if (!opened) toast({ title: 'Не удалось открыть оплату автоматически', description: 'Нажмите «Перейти к оплате»' });
         return;
       }
       const message = data.error || `Сервер ответил ошибкой (${res.status})`;
@@ -317,12 +317,12 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
       {paymentLink && (
         <div className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-xl flex-col gap-3 rounded-xl border border-primary/40 bg-card p-4 shadow-2xl sm:flex-row sm:items-center">
           <div className="flex-1 text-sm">
-            <div className="font-semibold text-foreground">Оплата открыта на странице Т‑Банка</div>
-            <div className="text-muted-foreground">Оплатите во вкладке банка, затем нажмите «Я оплатил».</div>
+            <div className="font-semibold text-foreground">Переходим на страницу оплаты Т‑Банка</div>
+            <div className="text-muted-foreground">После оплаты банк вернёт вас сюда. Если этого не случилось — нажмите «Я оплатил».</div>
           </div>
           <div className="flex gap-2">
             <Button asChild variant="outline" size="sm">
-              <a href={paymentLink.url} target="_blank" rel="noopener noreferrer">Перейти к оплате</a>
+              <a href={paymentLink.url} target="_top" rel="noopener noreferrer">Перейти к оплате</a>
             </Button>
             <Button
               size="sm"

@@ -170,7 +170,7 @@ const TbankTestPanel = ({ receiptOn = false }: { receiptOn?: boolean }) => {
         setPendingUrl(d.payment_url);
         await checkStatus(d.payment_id, true);
         toast({
-          title: opened ? 'Форма оплаты открыта в новой вкладке' : 'Браузер заблокировал вкладку',
+          title: opened ? 'Переходим к форме оплаты' : 'Не удалось открыть оплату',
           description: 'Оплатите и нажмите «Обновить статус»'
         });
         setBusy(null);
