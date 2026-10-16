@@ -12,6 +12,7 @@ import { GOALS, reachGoal } from '@/lib/metrika';
 import functionUrls from '../../backend/func2url.json';
 import { sanitizeInn, isValidInn, getInnHint } from '@/lib/formatters';
 import PendingPromoNotice from '@/components/PendingPromoNotice';
+import { startOnboarding } from '@/lib/onboarding';
 
 interface CompanyLookupData {
   inn: string;
@@ -104,6 +105,7 @@ const CreateCompany = () => {
       if (response.ok && data.success) {
         if (data.trial_started) reachGoal(GOALS.trialStarted);
         forgetTariff();
+        startOnboarding(data.company_id);
         await refreshCompanies();
         setCurrentCompanyId(data.company_id);
         toast({ title: 'Компания создана', description: data.name });

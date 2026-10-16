@@ -19,6 +19,7 @@ import PageBanner from '@/components/banners/PageBanner';
 import { useNotifications, AppNotification } from '@/hooks/useNotifications';
 import { canOpenModule, defaultModuleFor, effectiveModules, isLockedByTariff } from '@/config/modules';
 import TariffLockedScreen from '@/components/layout/TariffLockedScreen';
+import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import SubscriptionPage from './SubscriptionPage';
 import { DateFilter } from '@/components/filters/DateRangeFilter';
 import { TYPE_FILTERS, TypeFilter, TypeFilterKey } from '@/lib/transactionTypeFilter';
@@ -121,6 +122,25 @@ const Index = () => {
         }}
       />
 
+
+      <OnboardingWizard
+        onConnect={
+          canOpen('integrations')
+            ? (slug) => {
+                handleModuleChange('integrations');
+                setIntegrationCategory(slug);
+              }
+            : undefined
+        }
+        onSetupReceipts={
+          canOpen('automation')
+            ? (id) => {
+                setReceiptSourceId(id);
+                handleModuleChange('automation');
+              }
+            : undefined
+        }
+      />
 
       <AppSidebar activeModule={shownModule ?? ''} onModuleChange={handleModuleChange} open={menuOpen} onClose={() => setMenuOpen(false)} />
 

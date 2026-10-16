@@ -26,7 +26,7 @@ const formatPhone = (phone?: string | null) => {
   return `+${d[0]} ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
 };
 
-const NotificationPreferences = () => {
+const NotificationPreferences = ({ embedded = false }: { embedded?: boolean }) => {
   const { currentCompany, user } = useAuth();
   const { toast } = useToast();
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
@@ -99,8 +99,8 @@ const NotificationPreferences = () => {
   const missingEmail = channel === 'email' && !contacts.email;
 
   return (
-    <Card className="border-border bg-card">
-      <CardHeader>
+    <Card className={embedded ? 'border-0 bg-transparent shadow-none' : 'border-border bg-card'}>
+      <CardHeader className={embedded ? 'hidden' : undefined}>
         <CardTitle className="flex items-center gap-2">
           <Icon name="BellRing" size={20} />
           Мои уведомления
@@ -110,7 +110,7 @@ const NotificationPreferences = () => {
           Если канал не выбран, уведомления остаются только в колокольчике. Настройка у каждого сотрудника своя.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className={embedded ? 'space-y-6 p-0' : 'space-y-6'}>
         <div className="space-y-2">
           <div className="text-sm font-medium">Куда присылать</div>
           <div className="flex flex-wrap gap-2">
