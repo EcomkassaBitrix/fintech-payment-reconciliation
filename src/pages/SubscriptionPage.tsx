@@ -50,6 +50,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
   const [provider, setProvider] = useState<string | null>(null);
   const [autopay, setAutopay] = useState<AutoPay | null>(null);
   const [recurringConsent, setRecurringConsent] = useState(false);
+  const [offerAccepted, setOfferAccepted] = useState(false);
   const [autopayBusy, setAutopayBusy] = useState(false);
   const [result, setResult] = useState<PaymentResultState | null>(null);
   const [paymentLink, setPaymentLink] = useState<{ url: string; id: number } | null>(null);
@@ -223,7 +224,8 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
           period,
           keep: overage ? keep : undefined,
           auto_renew: recurringConsent,
-          recurring_consent: recurringConsent
+          recurring_consent: recurringConsent,
+          offer_accepted: offerAccepted
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -388,6 +390,8 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
                     online={provider === 'tbank'}
                     recurringConsent={recurringConsent}
                     onRecurringConsentChange={setRecurringConsent}
+                    offerAccepted={offerAccepted}
+                    onOfferAcceptedChange={setOfferAccepted}
                   />
                 )}
           </div>

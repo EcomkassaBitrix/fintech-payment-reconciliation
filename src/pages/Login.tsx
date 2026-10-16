@@ -197,7 +197,7 @@ const Login = () => {
 
                 <p className="text-xs text-center text-muted-foreground px-4">
                   Нажимая «Войти», вы принимаете{' '}
-                  <a href="/terms" target="_blank" rel="noreferrer" className="underline hover:text-foreground">пользовательское соглашение</a>{' '}
+                  <a href="/offer" target="_blank" rel="noreferrer" className="underline hover:text-foreground">оферту</a>{' '}
                   и{' '}
                   <a href="/legal" target="_blank" rel="noreferrer" className="underline hover:text-foreground">политику обработки персональных данных</a>
                 </p>

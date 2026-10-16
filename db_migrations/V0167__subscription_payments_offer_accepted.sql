@@ -1,0 +1,1 @@
+ALTER TABLE t_p83864310_fintech_payment_reco.subscription_payments ADD COLUMN IF NOT EXISTS offer_accepted_at TIMESTAMP NULL;

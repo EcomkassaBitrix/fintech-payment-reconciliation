@@ -47,11 +47,8 @@ const LegalDocumentPage = ({ doc }: { doc: LegalDoc }) => {
             <span className="font-display text-lg font-bold text-foreground">Сверка</span>
           </Link>
           <nav className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs sm:text-sm">
-            <Link to="/offer" className={doc === 'offer' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
+            <Link to="/offer" className={doc === 'offer' || doc === 'terms' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
               Оферта
-            </Link>
-            <Link to="/terms" className={doc === 'terms' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
-              Соглашение
             </Link>
             <Link to="/legal" className={doc === 'privacy' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
               Политика ПДн

@@ -26,6 +26,8 @@ interface CheckoutPanelProps {
   onAutoRenewChange?: (v: boolean) => void;
   recurringConsent?: boolean;
   onRecurringConsentChange?: (v: boolean) => void;
+  offerAccepted?: boolean;
+  onOfferAcceptedChange?: (v: boolean) => void;
 }
 
 const CheckoutPanel = ({
@@ -49,7 +51,9 @@ const CheckoutPanel = ({
   autoRenew,
   onAutoRenewChange,
   recurringConsent,
-  onRecurringConsentChange
+  onRecurringConsentChange,
+  offerAccepted,
+  onOfferAcceptedChange
 }: CheckoutPanelProps) => (
   <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -68,7 +72,7 @@ const CheckoutPanel = ({
         </Button>
         <Button
           onClick={onPay}
-          disabled={paying || payBlocked || !online || !recurringConsent}
+          disabled={paying || payBlocked || !online || !recurringConsent || !offerAccepted}
           variant={removing > 0 ? 'destructive' : 'default'}
         >
           <Icon
@@ -114,25 +118,36 @@ const CheckoutPanel = ({
                 >
                   Условия оплаты и возврата
                 </a>
-                {' · '}
-                <a
-                  href="/offer"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Публичная оферта
-                </a>
               </span>
             </span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-card p-3">
+          <Checkbox
+            checked={offerAccepted}
+            onCheckedChange={(v) => onOfferAcceptedChange?.(Boolean(v))}
+            className="mt-0.5"
+          />
+          <span>
+            Я принимаю условия{' '}
+            <a
+              href="/offer"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              оферты
+            </a>
           </span>
         </label>
       </div>
     )}
 
-    {online && !recurringConsent && (
-      <div className="mt-2 text-xs text-muted-foreground">Чтобы оплатить, отметьте согласие на регулярные списания.</div>
+    {online && (!recurringConsent || !offerAccepted) && (
+      <div className="mt-2 text-xs text-muted-foreground">
+        Чтобы оплатить, отметьте согласие на регулярные списания и примите условия оферты.
+      </div>
     )}
 
     {checking && (

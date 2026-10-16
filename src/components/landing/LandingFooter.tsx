@@ -78,9 +78,8 @@ const LandingFooter = ({ showCases = false }: { showCases?: boolean }) => {
                 )}
               </div>
             )}
-            <div className="flex flex-col gap-2 text-sm md:items-end">
-              <a href="/offer" className="text-muted-foreground hover:text-foreground transition-colors">Публичная оферта</a>
-              <a href="/terms" className="text-muted-foreground hover:text-foreground transition-colors">Пользовательское соглашение</a>
+            <div className="flex flex-col gap-1 text-sm leading-snug md:items-end">
+              <a href="/offer" className="text-muted-foreground hover:text-foreground transition-colors">Оферта</a>
               <a href="/legal" className="text-muted-foreground hover:text-foreground transition-colors">Политика обработки персональных данных</a>
               <a href="/payment" className="text-muted-foreground hover:text-foreground transition-colors">Оплата, возврат и безопасность</a>
             </div>
