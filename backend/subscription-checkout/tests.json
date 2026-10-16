@@ -10,8 +10,23 @@
       "name": "Уведомление Т-Банка с неверной подписью отклоняется",
       "method": "POST",
       "path": "/?tbank_notify=1",
-      "body": {"TerminalKey": "x", "OrderId": "sv0-0", "Status": "CONFIRMED", "Token": "bad"},
+      "body": {
+        "TerminalKey": "x",
+        "OrderId": "sv0-0",
+        "Status": "CONFIRMED",
+        "Token": "bad"
+      },
       "expectedStatus": 403
+    },
+    {
+      "name": "Статус несуществующего промокода",
+      "method": "GET",
+      "path": "/?coupon_status=NO-SUCH-CODE-XYZ",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "valid": false
+      },
+      "bodyMatcher": "partial"
     }
   ]
 }

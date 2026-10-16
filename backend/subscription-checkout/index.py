@@ -158,6 +158,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return {'statusCode': 200 if ok else 403, 'headers': {'Content-Type': 'text/plain'},
                 'body': 'OK' if ok else 'BAD TOKEN', 'isBase64Encoded': False}
 
+    status_code = (event.get('queryStringParameters') or {}).get('coupon_status')
+    if event.get('httpMethod') == 'GET' and status_code:
+        conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        cur = conn.cursor()
+        try:
+            coupon, error = coupons.find(cur, status_code, 0)
+        finally:
+            cur.close()
+            conn.close()
+        return {'statusCode': 200,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'valid': error is None, 'error': error,
+                                    'tariff_name': coupon['tariff_name'] if coupon else None,
+                                    'period': coupon['period'] if coupon else None}, ensure_ascii=False),
+                'isBase64Encoded': False}
+
     raw_body = json.loads(event.get('body') or '{}') if event.get('httpMethod') == 'POST' else {}
     if raw_body.get('action') in ('test_checkout', 'test_charge', 'test_status', 'test_cancel', 'test_last'):
         denied = guard(event, check_company=False)

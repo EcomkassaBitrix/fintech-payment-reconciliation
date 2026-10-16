@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { formatLongDate } from '@/lib/subscription';
-import { forgetPromo, pendingPromo, SUBSCRIPTION_CHANGED } from '@/lib/pendingPromo';
+import { forgetPromo, pendingPromo, pendingPromoError, SUBSCRIPTION_CHANGED } from '@/lib/pendingPromo';
 import functionUrls from '../../backend/func2url.json';
 
 const api = (functionUrls as Record<string, string>)['subscription-checkout'];
@@ -16,6 +16,12 @@ const PendingPromoActivator = () => {
   useEffect(() => {
     const code = pendingPromo();
     if (!user || !companyId || !code || running.current) return;
+    const knownError = pendingPromoError();
+    if (knownError) {
+      forgetPromo();
+      toast({ title: `Промокод ${code} не применён`, description: knownError, variant: 'destructive' });
+      return;
+    }
     running.current = true;
     (async () => {
       try {

@@ -2,9 +2,9 @@
 const KEY = 'pending_promo';
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export const rememberPromo = (code: string) => {
+export const rememberPromo = (code: string, error: string | null = null) => {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ code: code.trim().toUpperCase(), at: Date.now() }));
+    localStorage.setItem(KEY, JSON.stringify({ code: code.trim().toUpperCase(), at: Date.now(), error }));
   } catch {
     /* хранилище недоступно - промокод можно ввести вручную */
   }
@@ -16,6 +16,15 @@ export const pendingPromo = (): string | null => {
     if (!raw) return null;
     const { code, at } = JSON.parse(raw);
     return typeof code === 'string' && code && Date.now() - at < TTL_MS ? code : null;
+  } catch {
+    return null;
+  }
+};
+
+export const pendingPromoError = (): string | null => {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? JSON.parse(raw).error || null : null;
   } catch {
     return null;
   }
