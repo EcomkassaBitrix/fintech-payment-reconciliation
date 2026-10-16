@@ -96,12 +96,24 @@ const CheckoutPanel = ({
       <div className="mt-3 space-y-2 text-sm">
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-card p-3">
           <Checkbox
-            checked={recurringConsent}
-            onCheckedChange={(v) => onRecurringConsentChange?.(Boolean(v))}
+            checked={recurringConsent && offerAccepted}
+            onCheckedChange={(v) => {
+              onRecurringConsentChange?.(Boolean(v));
+              onOfferAcceptedChange?.(Boolean(v));
+            }}
             className="mt-0.5"
           />
           <span>
-            Я соглашаюсь на регулярные списания
+            Я соглашаюсь на регулярные списания и принимаю условия{' '}
+            <a
+              href="/offer"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              оферты
+            </a>
             <span className="block text-xs text-muted-foreground">
               Продлевать автоматически — списывать с этой карты в конце каждого периода
             </span>
@@ -122,31 +134,12 @@ const CheckoutPanel = ({
             </span>
           </span>
         </label>
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-card p-3">
-          <Checkbox
-            checked={offerAccepted}
-            onCheckedChange={(v) => onOfferAcceptedChange?.(Boolean(v))}
-            className="mt-0.5"
-          />
-          <span>
-            Я принимаю условия{' '}
-            <a
-              href="/offer"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              оферты
-            </a>
-          </span>
-        </label>
       </div>
     )}
 
     {online && (!recurringConsent || !offerAccepted) && (
       <div className="mt-2 text-xs text-muted-foreground">
-        Чтобы оплатить, отметьте согласие на регулярные списания и примите условия оферты.
+        Чтобы оплатить, отметьте согласие с условиями выше.
       </div>
     )}
 
