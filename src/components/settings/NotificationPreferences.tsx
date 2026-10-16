@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -95,12 +94,7 @@ const NotificationPreferences = () => {
     }
   };
 
-  const toggleKind = (kind: string, on: boolean) =>
-    setKinds((prev) => (on ? [...new Set([...prev, kind])] : prev.filter((k) => k !== kind)));
-
-  const hasChanges = channel !== saved.channel
-    || kinds.length !== saved.kinds.length
-    || kinds.some((k) => !saved.kinds.includes(k));
+  const hasChanges = channel !== saved.channel;
   const recipient = channel === 'email' ? contacts.email : formatPhone(contacts.phone);
   const missingEmail = channel === 'email' && !contacts.email;
 
@@ -112,8 +106,8 @@ const NotificationPreferences = () => {
           Мои уведомления
         </CardTitle>
         <CardDescription>
-          Все уведомления видны в колокольчике кабинета. Здесь вы выбираете, какие из них дублировать лично вам и куда.
-          Настройка у каждого сотрудника своя.
+          Все уведомления видны в колокольчике кабинета. Выберите канал — и все они будут дублироваться лично вам.
+          Если канал не выбран, уведомления остаются только в колокольчике. Настройка у каждого сотрудника своя.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -147,19 +141,16 @@ const NotificationPreferences = () => {
           )}
         </div>
 
-        <div className="space-y-3">
-          <div className="text-sm font-medium">Какие уведомления дублировать</div>
-          {catalog.map((item) => (
-            <label key={item.kind} className={`flex items-center gap-3 text-sm ${channel ? '' : 'opacity-50'}`}>
-              <Checkbox
-                checked={kinds.includes(item.kind)}
-                disabled={!channel}
-                onCheckedChange={(v) => toggleKind(item.kind, Boolean(v))}
-              />
-              {item.label}
-            </label>
-          ))}
-          <p className="text-xs text-muted-foreground">Новые виды уведомлений будут появляться в этом списке.</p>
+        <div className="space-y-2">
+          <div className="text-sm font-medium">Что приходит</div>
+          <ul className="space-y-1 text-sm text-muted-foreground">
+            {catalog.map((item) => (
+              <li key={item.kind} className="flex items-start gap-2">
+                <Icon name="Check" size={14} className="mt-0.5 shrink-0 text-primary" />
+                {item.label}
+              </li>
+            ))}
+          </ul>
         </div>
 
         <div className="flex flex-wrap gap-2">

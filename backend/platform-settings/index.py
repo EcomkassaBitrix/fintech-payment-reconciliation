@@ -250,6 +250,51 @@ def call(url: str, body: Dict[str, Any], timeout: float) -> Optional[str]:
         return str(e)[:200]
 
 
+def subscription_reminders(cur, conn) -> List[int]:
+    '''
+    Напоминание за 3 дня до конца подписки или пробного периода, если автопродление не сработает
+    (выключено или нет карты). Одно на компанию и дату окончания; дубли - в выбранный канал.
+    '''
+    cur.execute(f'''
+        WITH ends AS (
+            SELECT s.company_id, t.name AS tariff_name,
+                   CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END AS ends_at,
+                   s.status = 'trial' AS is_trial
+            FROM {SCHEMA}.subscriptions s
+            JOIN {SCHEMA}.companies c ON c.id = s.company_id AND c.status = 'active'
+            LEFT JOIN {SCHEMA}.tariffs t ON t.id = s.tariff_id
+            WHERE s.status IN ('trial', 'active')
+              AND NOT (s.status = 'active' AND s.auto_renew = true AND s.card_id IS NOT NULL)
+        )
+        INSERT INTO {SCHEMA}.notifications (company_id, kind, level, title, message, link_module, entity_type, entity_id, payload)
+        SELECT e.company_id, 'subscription_ending', 'warning',
+               CASE WHEN e.is_trial THEN 'Пробный период скоро закончится' ELSE 'Подписка скоро закончится' END,
+               CASE WHEN e.is_trial THEN 'Пробный период' ELSE 'Тариф «' || COALESCE(e.tariff_name, '—') || '»' END
+               || ' действует до ' || to_char(e.ends_at, 'DD.MM.YYYY')
+               || '. Автопродление не включено - оплатите подписку, чтобы сверка и автоматизация не остановились.',
+               'subscription', 'subscription_end', e.company_id::text || ':' || to_char(e.ends_at, 'YYYY-MM-DD'),
+               jsonb_build_object('ends_at', e.ends_at)
+        FROM ends e
+        WHERE e.ends_at > NOW() AND e.ends_at < NOW() + INTERVAL '3 days'
+          AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.notifications n
+                          WHERE n.kind = 'subscription_ending' AND n.entity_type = 'subscription_end'
+                            AND n.entity_id = e.company_id::text || ':' || to_char(e.ends_at, 'YYYY-MM-DD'))
+        RETURNING id, company_id
+    ''')
+    created = cur.fetchall()
+    for notification_id, company_id in created:
+        cur.execute(f'''
+            INSERT INTO {SCHEMA}.notification_deliveries (notification_id, user_id, channel)
+            SELECT %s, p.user_id, p.channel
+            FROM {SCHEMA}.notification_preferences p
+            JOIN {SCHEMA}.company_users cu ON cu.company_id = p.company_id AND cu.user_id = p.user_id AND cu.status = 'active'
+            WHERE p.company_id = %s AND p.channel IS NOT NULL
+            ON CONFLICT (notification_id, user_id) DO NOTHING
+        ''', (notification_id, company_id))
+    conn.commit()
+    return sorted({c for _, c in created})
+
+
 def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
     '''
     Один шаг планировщика: по каждой компании с активными интеграциями или сценариями
@@ -427,6 +472,13 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
                 }))
     for company_id in daily_check_ids:
         tasks.append((company_id, NOTIFICATIONS_URL, {'action': 'dispatch', 'company_id': company_id, 'daily': True}))
+    try:
+        for company_id in subscription_reminders(cur, conn):
+            if company_id not in daily_check_ids:
+                tasks.append((company_id, NOTIFICATIONS_URL, {'action': 'dispatch', 'company_id': company_id}))
+    except Exception as e:
+        conn.rollback()
+        print(f'subscription reminders failed: {e}')
     for integration_id, company_id, date_from, date_to in bank_jobs:
         tasks.append((company_id, BANK_URL, {'integration_id': integration_id, 'company_id': company_id,
                                              'date_from': date_from, 'date_to': date_to}))

@@ -66,7 +66,7 @@ def mark_failed(cur, job: Dict[str, Any], message: str, attempts: int) -> None:
             FROM {SCHEMA}.notification_preferences p
             JOIN {SCHEMA}.company_users cu ON cu.company_id = p.company_id AND cu.user_id = p.user_id
                  AND cu.status = 'active'
-            WHERE p.company_id = %s AND p.channel IS NOT NULL AND p.kinds ? 'automation_failed'
+            WHERE p.company_id = %s AND p.channel IS NOT NULL
             ON CONFLICT (notification_id, user_id) DO NOTHING
         ''', (row[0], job['company_id']))
 

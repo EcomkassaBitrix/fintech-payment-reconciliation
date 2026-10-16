@@ -35,9 +35,9 @@ def _notify(cur, pay: Dict[str, Any], kind: str, level: str, title: str, message
         SELECT %s, p.user_id, p.channel
         FROM {SCHEMA}.notification_preferences p
         JOIN {SCHEMA}.company_users cu ON cu.company_id = p.company_id AND cu.user_id = p.user_id AND cu.status = 'active'
-        WHERE p.company_id = %s AND p.channel IS NOT NULL AND p.kinds ? %s
+        WHERE p.company_id = %s AND p.channel IS NOT NULL
         ON CONFLICT (notification_id, user_id) DO NOTHING
-    ''', (row[0], pay['company_id'], kind))
+    ''', (row[0], pay['company_id']))
     NOTIFY_COMPANIES.append(pay['company_id'])
 
 

@@ -129,7 +129,7 @@ def notify_receipt_failed(cur, schema: str, job_id: int, message: str, data: Dic
         SELECT %s, p.user_id, p.channel
         FROM {schema}.notification_preferences p
         JOIN {schema}.company_users cu ON cu.company_id = p.company_id AND cu.user_id = p.user_id AND cu.status = 'active'
-        WHERE p.company_id = %s AND p.channel IS NOT NULL AND p.kinds ? 'receipt_failed'
+        WHERE p.company_id = %s AND p.channel IS NOT NULL
         ON CONFLICT (notification_id, user_id) DO NOTHING
     ''', (row[0], row[1]))
 

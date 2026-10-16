@@ -25,6 +25,7 @@ KINDS = {
     'missing_receipts': 'Платежи без чека за вчера',
     'subscription_paid': 'Оплата подписки Сверки (в т.ч. автопродление)',
     'subscription_renew_failed': 'Банк отклонил автопродление подписки',
+    'subscription_ending': 'Подписка заканчивается через 3 дня (если автопродление не включено)',
 }
 TRANSACTIONS_URL = 'https://functions.poehali.dev/d977ccf7-aaab-48a4-b418-798c34bc70ec'
 CHANNELS = {'max': 'ek_max', 'whatsapp': 'ek_wa', 'telegram': 'ek_tg', 'email': 'ek_email'}
@@ -124,9 +125,9 @@ def notify(cur, company_id, kind: str, level: str, title: str, message: str, lin
         SELECT %s, p.user_id, p.channel
         FROM {SCHEMA}.notification_preferences p
         JOIN {SCHEMA}.company_users cu ON cu.company_id = p.company_id AND cu.user_id = p.user_id AND cu.status = 'active'
-        WHERE p.company_id = %s AND p.channel IS NOT NULL AND p.kinds ? %s
+        WHERE p.company_id = %s AND p.channel IS NOT NULL
         ON CONFLICT (notification_id, user_id) DO NOTHING
-    ''', (row[0], company_id, kind))
+    ''', (row[0], company_id))
     return row[0]
 
 
