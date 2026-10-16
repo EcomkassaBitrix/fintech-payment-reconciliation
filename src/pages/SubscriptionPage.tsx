@@ -14,7 +14,7 @@ import {
 } from '@/components/profile/DowngradeKeepPicker';
 import { AutoPay, CurrentPlan, Payment, Period, PlanTariff } from '@/components/subscription/subscriptionTypes';
 import AutoPayCard from '@/components/subscription/AutoPayCard';
-import { openPaymentPage } from '@/lib/openPayment';
+import { isEmbedded, openPaymentPage, preparePaymentWindow } from '@/lib/openPayment';
 import LinkedCardRow from '@/components/subscription/LinkedCardRow';
 import PaymentResultDialog, { PaymentResultState } from '@/components/subscription/PaymentResultDialog';
 import CurrentPlanCard from '@/components/subscription/CurrentPlanCard';
@@ -210,6 +210,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
 
   const pay = async () => {
     if (!chosen || !companyId) return;
+    const prepared = preparePaymentWindow();
     setPaying(true);
     setPayError(null);
     setPaid(null);
@@ -230,16 +231,18 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success && data.payment_url) {
-        const opened = openPaymentPage(data.payment_url);
+        const opened = openPaymentPage(data.payment_url, prepared);
         setPaymentLink({ url: data.payment_url, id: data.payment_id });
         setPlanSheet(false);
         if (!opened) toast({ title: 'Не удалось открыть оплату автоматически', description: 'Нажмите «Перейти к оплате»' });
         return;
       }
+      prepared?.close();
       const message = data.error || `Сервер ответил ошибкой (${res.status})`;
       setPayError(message);
       toast({ title: 'Не удалось оплатить', description: message, variant: 'destructive' });
     } catch {
+      prepared?.close();
       setPayError('Нет связи с сервером, попробуйте ещё раз');
       toast({ title: 'Ошибка подключения', variant: 'destructive' });
     } finally {
@@ -322,7 +325,7 @@ const SubscriptionPage = ({ highlightModule }: SubscriptionPageProps) => {
           </div>
           <div className="flex gap-2">
             <Button asChild variant="outline" size="sm">
-              <a href={paymentLink.url} target="_top" rel="noopener noreferrer">Перейти к оплате</a>
+              <a href={paymentLink.url} target={isEmbedded() ? '_blank' : '_self'} rel="noopener noreferrer">Перейти к оплате</a>
             </Button>
             <Button
               size="sm"

@@ -6,15 +6,17 @@ export const isEmbedded = () => {
   }
 };
 
-export const openPaymentPage = (url: string): boolean => {
+export const preparePaymentWindow = (): Window | null => (isEmbedded() ? window.open('', '_blank') : null);
+
+export const openPaymentPage = (url: string, prepared?: Window | null): boolean => {
   if (!isEmbedded()) {
     window.location.href = url;
     return true;
   }
-  try {
-    window.top!.location.href = url;
+  if (prepared && !prepared.closed) {
+    prepared.location.href = url;
     return true;
-  } catch {
-    return false;
   }
+  const tab = window.open(url, '_blank');
+  return tab !== null;
 };

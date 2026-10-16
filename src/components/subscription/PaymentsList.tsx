@@ -5,6 +5,7 @@ import Icon from '@/components/ui/icon';
 import { formatLongDate } from '@/lib/subscription';
 import { PAYMENT_METHODS, Payment, money } from './subscriptionTypes';
 import { couponPeriodLabel } from '@/lib/couponPeriod';
+import { isEmbedded } from '@/lib/openPayment';
 
 const STATUS: Record<string, { label: string; className: string }> = {
   paid: { label: 'Оплачено', className: 'border-success/40 bg-success/10 text-success' },
@@ -118,7 +119,7 @@ const PaymentsList = ({ payments }: { payments: Payment[] }) => {
                 <div className="flex items-center gap-3">
                   {p.status === 'pending' && p.payment_url && (
                     <Button asChild size="sm" variant="outline">
-                      <a href={p.payment_url} target="_blank" rel="noopener noreferrer">
+                      <a href={p.payment_url} target={isEmbedded() ? '_blank' : '_self'} rel="noopener noreferrer">
                         Оплатить
                       </a>
                     </Button>
