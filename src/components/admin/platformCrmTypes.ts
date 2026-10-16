@@ -89,6 +89,7 @@ export const describeResult = (e: PlatformCrmEvent) => {
   if (r.company_id) parts.push(`компания #${r.company_id}${r.company_created ? ' (новая)' : ''}`);
   if (r.contact_linked) parts.push('привязана к контакту');
   if (r.requisite && r.requisite !== 'ok') parts.push(`реквизит ИНН не сохранён: ${r.requisite}`);
+  if (r.tariff) parts.push(`тариф «${r.tariff}» добавлен в товары`);
   if (r.contact_name || r.contact_email) parts.push('контакт обновлён');
   return parts.join(', ');
 };

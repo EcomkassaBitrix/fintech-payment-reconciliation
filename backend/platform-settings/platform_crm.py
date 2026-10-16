@@ -7,7 +7,8 @@ CRM платформы (Битрикс24): передача регистраци
   register - контакт (поиск дубля по телефону) + сделка или лид в выбранной воронке/этапе;
              телефон и канал связи - в выбранные поля.
   profile  - обновление ФИО и почты контакта (и лида, если передаём лидами).
-  company  - компания с названием и ИНН (реквизит или своё поле), привязка к контакту и сделке/лиду.
+  company  - компания с названием и ИНН (реквизит или своё поле), привязка к контакту и сделке/лиду;
+             выбранный при регистрации тариф - товаром в сделку/лид (товара нет в каталоге - создаём).
 Связи «наш объект -> ID в CRM» - в platform_crm_links.
 '''
 import json
@@ -476,7 +477,59 @@ def handle_company(cur, webhook: str, settings: Dict[str, Any], event: Dict[str,
             if err:
                 raise RuntimeError(f'Не удалось привязать компанию к контакту: {err}')
         result['contact_linked'] = True
+    tariff_name = _attach_tariff(cur, webhook, company['id'], user_link, cache)
+    if tariff_name:
+        result['tariff'] = tariff_name
     return result
+
+
+def _tariff_product(webhook: str, tariff: Dict[str, Any], cache: Dict[str, Any]) -> str:
+    '''ID товара тарифа в каталоге CRM: ищем по названию, нет - создаём с ценой тарифа.'''
+    name = f"Тариф «{tariff['name']}»"
+    key = f'product:{name}'
+    if key in cache:
+        return cache[key]
+    res, err = call(webhook, 'crm.product.list', {'filter': {'NAME': name}, 'select': ['ID', 'NAME']})
+    if err:
+        raise RuntimeError(f'Не удалось найти товар тарифа: {err}')
+    found = next((p for p in (res or []) if isinstance(p, dict) and p.get('NAME') == name), None)
+    if found:
+        cache[key] = str(found['ID'])
+        return cache[key]
+    new_id, err = call(webhook, 'crm.product.add', {'fields': {
+        'NAME': name, 'PRICE': tariff['price'], 'CURRENCY_ID': 'RUB', 'ACTIVE': 'Y',
+        'DESCRIPTION': f"Подписка на Сверку, {tariff['period_days']} дн."}})
+    if err:
+        raise RuntimeError(f'Не удалось создать товар тарифа: {err}')
+    cache[key] = str(new_id)
+    return cache[key]
+
+
+def _company_tariff(cur, company_id: int) -> Optional[Dict[str, Any]]:
+    cur.execute(f'''
+        SELECT t.name, t.price, t.period_days FROM {SCHEMA}.subscriptions s
+        JOIN {SCHEMA}.tariffs t ON t.id = s.tariff_id
+        WHERE s.company_id = %s ORDER BY s.id DESC LIMIT 1
+    ''', (company_id,))
+    r = cur.fetchone()
+    return {'name': r[0], 'price': float(r[1] or 0), 'period_days': r[2]} if r else None
+
+
+def _attach_tariff(cur, webhook: str, company_id: int, user_link: Dict[str, Any],
+                   cache: Dict[str, Any]) -> Optional[str]:
+    '''Тариф компании - строкой товара в сделку/лид регистрации (замена строк - повтор безопасен).'''
+    entity, entity_id = user_link.get('entity'), user_link.get('entity_id')
+    if entity not in ('deal', 'lead') or not entity_id:
+        return None
+    tariff = _company_tariff(cur, company_id)
+    if not tariff:
+        return None
+    product_id = _tariff_product(webhook, tariff, cache)
+    _, err = call(webhook, f'crm.{entity}.productrows.set', {'id': entity_id, 'rows': [
+        {'PRODUCT_ID': product_id, 'PRICE': tariff['price'], 'QUANTITY': 1}]})
+    if err:
+        raise RuntimeError(f'Не удалось добавить тариф в {"сделку" if entity == "deal" else "лид"}: {err}')
+    return tariff['name']
 
 
 HANDLERS = {'register': handle_register, 'profile': handle_profile, 'company': handle_company}
