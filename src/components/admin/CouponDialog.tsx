@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { COUPON_PERIOD_LABELS, type CouponPeriod } from '@/lib/couponPeriod';
+import { COUPON_PERIOD_LABELS, randomCode, type CouponPeriod } from '@/lib/couponPeriod';
 
 export interface Coupon {
   id?: number;
@@ -33,15 +33,6 @@ interface Props {
   onClose: () => void;
   onSave: (c: Coupon) => Promise<boolean>;
 }
-
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-const randomCode = () => {
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  const chars = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
-  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
-};
 
 const inMonth = () => {
   const d = new Date();
@@ -80,7 +71,7 @@ const CouponDialog = ({ open, coupon, tariffs, onClose, onSave }: Props) => {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{coupon?.id ? 'Купон' : 'Новый купон'}</DialogTitle>
+          <DialogTitle>{coupon?.id ? 'Купон' : coupon ? 'Копия купона' : 'Новый купон'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">

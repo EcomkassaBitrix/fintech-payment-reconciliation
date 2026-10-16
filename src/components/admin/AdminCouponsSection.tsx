@@ -10,7 +10,7 @@ import { formatShortDate } from '@/lib/subscription';
 import functionUrls from '../../../backend/func2url.json';
 import { promoLink } from '@/lib/pendingPromo';
 import CouponDialog, { Coupon, CouponTariff } from './CouponDialog';
-import { couponPeriodLabel } from '@/lib/couponPeriod';
+import { couponPeriodLabel, randomCode } from '@/lib/couponPeriod';
 
 const api = (functionUrls as Record<string, string>)['admin-tariffs'];
 
@@ -196,10 +196,29 @@ const AdminCouponsSection = () => {
                                 {st.label}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="whitespace-nowrap text-right">
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                title="Копировать купон"
+                                onClick={() => {
+                                  setEditing({
+                                    code: randomCode(),
+                                    tariff_id: c.tariff_id,
+                                    period: c.period,
+                                    usage_type: c.usage_type,
+                                    valid_until: c.valid_until,
+                                    is_active: true
+                                  });
+                                  setDialogOpen(true);
+                                }}
+                              >
+                                <Icon name="CopyPlus" size={14} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Редактировать"
                                 onClick={() => {
                                   setEditing(c);
                                   setDialogOpen(true);

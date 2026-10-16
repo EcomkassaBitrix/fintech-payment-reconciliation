@@ -9,3 +9,12 @@ export const COUPON_PERIOD_LABELS: Record<CouponPeriod, string> = {
 
 export const couponPeriodLabel = (period: string) =>
   COUPON_PERIOD_LABELS[period as CouponPeriod] || '1 месяц';
+
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export const randomCode = () => {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  const chars = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+};
