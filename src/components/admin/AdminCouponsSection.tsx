@@ -10,6 +10,7 @@ import { formatShortDate } from '@/lib/subscription';
 import functionUrls from '../../../backend/func2url.json';
 import { promoLink } from '@/lib/pendingPromo';
 import CouponDialog, { Coupon, CouponTariff } from './CouponDialog';
+import { couponPeriodLabel } from '@/lib/couponPeriod';
 
 const api = (functionUrls as Record<string, string>)['admin-tariffs'];
 
@@ -175,7 +176,7 @@ const AdminCouponsSection = () => {
                               </div>
                             </TableCell>
                             <TableCell>{c.tariff_name}</TableCell>
-                            <TableCell>{c.period === 'year' ? '1 год' : '1 месяц'}</TableCell>
+                            <TableCell>{couponPeriodLabel(c.period)}</TableCell>
                             <TableCell>{c.usage_type === 'single' ? 'Одноразовый' : 'Многоразовый'}</TableCell>
                             <TableCell>{formatShortDate(c.valid_until)}</TableCell>
                             <TableCell>

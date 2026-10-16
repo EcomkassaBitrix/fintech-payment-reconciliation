@@ -5,11 +5,12 @@ import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 import { formatLongDate } from '@/lib/subscription';
 import functionUrls from '../../../backend/func2url.json';
+import { couponPeriodLabel } from '@/lib/couponPeriod';
 
 interface CouponInfo {
   code: string;
   tariff_name: string;
-  period: 'month' | 'year';
+  period: string;
   period_end?: string;
 }
 
@@ -104,7 +105,7 @@ const PromoCodeField = ({ companyId, canApply, onApplied }: Props) => {
       </div>
       {valid && (
         <p className="mt-1.5 text-xs text-primary">
-          Тариф «{valid.tariff_name}» на {valid.period === 'year' ? '1 год' : '1 месяц'} бесплатно
+          Тариф «{valid.tariff_name}» на {couponPeriodLabel(valid.period)} бесплатно
         </p>
       )}
       {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}

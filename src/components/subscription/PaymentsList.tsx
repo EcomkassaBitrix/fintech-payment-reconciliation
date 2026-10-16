@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 import { formatLongDate } from '@/lib/subscription';
 import { PAYMENT_METHODS, Payment, money } from './subscriptionTypes';
+import { couponPeriodLabel } from '@/lib/couponPeriod';
 
 const STATUS: Record<string, { label: string; className: string }> = {
   paid: { label: 'Оплачено', className: 'border-success/40 bg-success/10 text-success' },
@@ -92,7 +93,7 @@ const PaymentsList = ({ payments }: { payments: Payment[] }) => {
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-foreground">
-                      {p.tariff_name} · {p.period === 'year' ? 'год' : `${p.days || 30} дн.`}
+                      {p.tariff_name} · {p.period === 'year' ? 'год' : p.period === 'quarter' || p.period === 'half_year' ? couponPeriodLabel(p.period) : `${p.days || 30} дн.`}
                     </span>
                     <Badge variant="outline" className={st.className}>
                       {st.label}

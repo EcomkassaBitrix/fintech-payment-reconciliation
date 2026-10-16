@@ -19,6 +19,7 @@ import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/formatDate';
 import functionUrls from '../../../backend/func2url.json';
+import { couponPeriodLabel } from '@/lib/couponPeriod';
 
 interface Transaction {
   id: number;
@@ -193,7 +194,7 @@ const AdminSubscriptionTransactions = () => {
                             {tx.is_test && <Badge variant="outline" className="ml-2 text-[10px]">тест</Badge>}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {tx.tariff_name} · {tx.period === 'year' ? 'год' : 'месяц'}
+                            {tx.tariff_name} · {couponPeriodLabel(tx.period).replace(/^1 /, '')}
                             {tx.is_recurring && ' · автопродление'}
                             {tx.company_inn && ` · ИНН ${tx.company_inn}`}
                           </div>

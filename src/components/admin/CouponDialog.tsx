@@ -6,13 +6,14 @@ import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { COUPON_PERIOD_LABELS, type CouponPeriod } from '@/lib/couponPeriod';
 
 export interface Coupon {
   id?: number;
   code: string;
   tariff_id: number | null;
   tariff_name?: string;
-  period: 'month' | 'year';
+  period: CouponPeriod;
   usage_type: 'single' | 'multi';
   valid_until: string;
   is_active: boolean;
@@ -120,8 +121,9 @@ const CouponDialog = ({ open, coupon, tariffs, onClose, onSave }: Props) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="month">1 месяц</SelectItem>
-                  <SelectItem value="year">1 год</SelectItem>
+                  {(Object.keys(COUPON_PERIOD_LABELS) as CouponPeriod[]).map((p) => (
+                    <SelectItem key={p} value={p}>{COUPON_PERIOD_LABELS[p]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

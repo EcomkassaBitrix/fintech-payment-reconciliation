@@ -12,7 +12,7 @@ def find(cur, code: str, company_id, lock: bool = False) -> Tuple[Optional[Dict[
         return None, 'Введите промокод'
     cur.execute(f'''
         SELECT c.id, c.code, c.tariff_id, t.name, c.period, c.usage_type, c.valid_until, c.is_active,
-               CASE WHEN c.period = 'year' THEN 365 ELSE COALESCE(NULLIF(t.period_days, 0), 30) END,
+               CASE WHEN c.period = 'year' THEN 365 WHEN c.period = 'half_year' THEN 180 WHEN c.period = 'quarter' THEN 90 ELSE COALESCE(NULLIF(t.period_days, 0), 30) END,
                (c.valid_until < (NOW() AT TIME ZONE 'Europe/Moscow')::date)
         FROM {SCHEMA}.subscription_coupons c JOIN {SCHEMA}.tariffs t ON t.id = c.tariff_id
         WHERE UPPER(c.code) = %s {'FOR UPDATE OF c' if lock else ''}

@@ -82,8 +82,8 @@ def save_coupon(cur, body, requester):
     code = (body.get('code') or '').strip().upper()
     if not code or len(code) > 64 or not all(ch.isalnum() or ch in '-_' for ch in code):
         return 'Название купона - буквы, цифры, «-» и «_», до 64 символов'
-    if body.get('period') not in ('month', 'year'):
-        return 'Срок действия подписки: 1 месяц или 1 год'
+    if body.get('period') not in ('month', 'quarter', 'half_year', 'year'):
+        return 'Срок подписки: 1, 3, 6 месяцев или 1 год'
     if body.get('usage_type') not in ('single', 'multi'):
         return 'Тип купона: одноразовый или многоразовый'
     try:
@@ -134,7 +134,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     POST {action: "set_company_tariff", requester_user_id, company_id, tariff_id} - сменить тариф компании
     POST {action: "extend_subscription", requester_user_id, company_id, period: tariff|year} - продлить подписку
     GET ?view=coupons - купоны на подписку и тарифы; GET ?view=coupon_activations&coupon_id= - кто применил
-    POST {action: "coupon_save", id?, code, tariff_id, period: month|year, usage_type: single|multi,
+    POST {action: "coupon_save", id?, code, tariff_id, period: month|quarter|half_year|year, usage_type: single|multi,
           valid_until: YYYY-MM-DD, is_active} - создать/изменить купон
     '''
     denied = guard(event, check_company=False)
