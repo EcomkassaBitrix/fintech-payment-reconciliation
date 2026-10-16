@@ -470,8 +470,12 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # планировщика заново тянул бы report() по всем документам окна.
             ids = [str(c.get('orderId')) for c in candidates]
             cur.execute(f'''
-                SELECT order_id FROM {SCHEMA}.ecomkassa_receipts
-                WHERE integration_id = %s AND status = 'done' AND order_id = ANY(%s)
+                SELECT r.order_id FROM {SCHEMA}.ecomkassa_receipts r
+                WHERE r.integration_id = %s AND r.status = 'done' AND r.order_id = ANY(%s)
+                  AND (r.payment_provider IS NULL OR EXISTS (
+                      SELECT 1 FROM {SCHEMA}.webhook_payments wp
+                      WHERE wp.company_id = r.company_id AND wp.payment_id = r.order_id
+                  ))
             ''', (integration_id, ids))
             known = {r[0] for r in cur.fetchall()}
             candidates = [c for c in candidates if str(c.get('orderId')) not in known]
