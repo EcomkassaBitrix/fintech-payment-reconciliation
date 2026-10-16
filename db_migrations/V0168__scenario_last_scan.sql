@@ -1,0 +1,1 @@
+ALTER TABLE t_p83864310_fintech_payment_reco.automation_scenarios ADD COLUMN IF NOT EXISTS last_scan_at timestamp NULL;

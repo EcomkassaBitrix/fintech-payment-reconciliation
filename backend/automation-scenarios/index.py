@@ -135,7 +135,7 @@ def validate(cur, company_id: int, body: Dict[str, Any]) -> Optional[str]:
             if mapping.get('verify_mode') != 'payment_system':
                 return 'Для счетов «ожидает оплату» нужна проверка в платёжной системе'
             try:
-                lookback = int(mapping.get('lookback_days') or 3)
+                lookback = 1 if mapping.get('lookback_days') == 'year' else int(mapping.get('lookback_days') or 3)
             except (TypeError, ValueError):
                 return 'Укажите, за сколько дней смотреть счета'
             if lookback < 1 or lookback > 31:

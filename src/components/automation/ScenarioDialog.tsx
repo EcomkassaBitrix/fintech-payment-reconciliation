@@ -278,7 +278,7 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
             <ScenarioDiscrepancyFields
               mapping={form.field_mapping}
               onChange={(patch) => setForm({ ...form, field_mapping: { ...form.field_mapping, ...patch } })}
-              nextStep={() => step++}
+              startStep={(step += 3) - 3}
             />
           )}
 

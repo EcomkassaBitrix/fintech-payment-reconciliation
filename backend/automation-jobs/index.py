@@ -239,13 +239,13 @@ def enqueue_discrepancies(cur, conn, company_id) -> int:
     cur.execute(f'''
         SELECT id, COALESCE((field_mapping->>'delay_minutes')::int, 60),
                COALESCE(field_mapping->>'discrepancy_kind', 'missing_receipt'),
-               COALESCE((field_mapping->>'lookback_days')::int, 3)
+               COALESCE(field_mapping->>'lookback_days', '3')
         FROM {SCHEMA}.automation_scenarios
         WHERE company_id = %s AND trigger_type = 'discrepancy' AND status = 'active' AND removed_at IS NULL
     ''', (company_id,))
     rows = cur.fetchall()
     scenarios = [(sid, d) for sid, d, kind, _ in rows if kind != 'pending_invoice']
-    invoice_scenarios = [(sid, d, lb) for sid, d, kind, lb in rows if kind == 'pending_invoice']
+    invoice_scenarios = [(sid, d, lookback_days(lb)) for sid, d, kind, lb in rows if kind == 'pending_invoice']
     created = 0
     if invoice_scenarios:
         try:
@@ -285,7 +285,22 @@ def enqueue_discrepancies(cur, conn, company_id) -> int:
 # Статусы счёта Екомкассы «ожидает оплату» и пауза перед повторной проверкой неоплаченного счёта.
 PENDING_INVOICE_STATUSES = {'CREATED', 'WAITING'}
 INVOICE_RECHECK_HOURS = 6
-INVOICE_SEARCH_PAGES = 4
+# Неоплаченный счёт перепроверяем, только пока он свежий: старые брошенные счета - одна проверка.
+INVOICE_RECHECK_MAX_AGE_DAYS = 3
+INVOICE_SEARCH_PAGES = 10
+# Счета в Екомкассе ищем не чаще раза в INVOICE_SCAN_MINUTES на сценарий (поиск за год - тяжёлый).
+INVOICE_SCAN_MINUTES = 30
+
+
+def lookback_days(value) -> int:
+    '''Период поиска счетов: число дней (1-31) или «этот год» - с 1 января (по Москве).'''
+    if value == 'year':
+        today = (datetime.utcnow() + timedelta(hours=3)).date()
+        return (today - today.replace(month=1, day=1)).days + 1
+    try:
+        return max(1, min(int(value), 31))
+    except (TypeError, ValueError):
+        return 3
 
 
 def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
@@ -294,10 +309,21 @@ def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
     Задание на каждый счёт; оплату проверяем в эквайринге по номеру заказа (UUID счёта) уже в задании.
     Неоплаченный счёт (задание «Пропущен») перепроверяем не чаще раза в INVOICE_RECHECK_HOURS.
     '''
+    ids = [sid for sid, _, _ in scenarios]
+    cur.execute(f'''
+        UPDATE {SCHEMA}.automation_scenarios SET last_scan_at = NOW()
+        WHERE id = ANY(%s) AND (last_scan_at IS NULL OR last_scan_at < NOW() - INTERVAL '{INVOICE_SCAN_MINUTES} minutes')
+        RETURNING id
+    ''', (ids,))
+    due = {r[0] for r in cur.fetchall()}
+    conn.commit()
+    scenarios = [x for x in scenarios if x[0] in due]
+    if not scenarios:
+        return 0
     kassa = company_cash_register(cur, company_id)
     if not kassa:
         return 0
-    lookback = max(1, min(max(lb for _, _, lb in scenarios), 31))
+    lookback = max(lb for _, _, lb in scenarios)
     since = (datetime.utcnow() - timedelta(days=lookback)).strftime('%Y-%m-%dT%H:%M:%SZ')
     items = []
     for page in range(INVOICE_SEARCH_PAGES):
@@ -331,7 +357,8 @@ def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
             ''', (scenario_id, uid))
             existing = cur.fetchone()
             if existing:
-                if existing[1] == 'skipped' and existing[2] and existing[0]:
+                fresh = updated is None or updated > now_utc - timedelta(days=INVOICE_RECHECK_MAX_AGE_DAYS)
+                if existing[1] == 'skipped' and existing[2] and fresh:
                     cur.execute(f'''
                         UPDATE {SCHEMA}.automation_jobs SET status = 'new', step = 'prepare', attempts = 0,
                                next_attempt_at = NOW(), last_error = NULL, updated_at = NOW()

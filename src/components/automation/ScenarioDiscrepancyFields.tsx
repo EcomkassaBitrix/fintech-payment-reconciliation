@@ -14,7 +14,7 @@ import {
 interface Props {
   mapping: Record<string, unknown>;
   onChange: (patch: Record<string, unknown>) => void;
-  nextStep: () => number;
+  startStep: number;
 }
 
 const OptionCards = <T extends string>({
@@ -49,16 +49,16 @@ const OptionCards = <T extends string>({
   </div>
 );
 
-const ScenarioDiscrepancyFields = ({ mapping, onChange, nextStep }: Props) => {
+const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep }: Props) => {
   const kind = (mapping.discrepancy_kind as DiscrepancyKind) || 'missing_receipt';
   const verify = (mapping.verify_mode as VerifyMode) || 'none';
   const delay = Number(mapping.delay_minutes) || DEFAULT_DISCREPANCY_DELAY;
-  const lookback = Number(mapping.lookback_days) || 3;
+  const lookback = mapping.lookback_days === 'year' ? 'year' : Number(mapping.lookback_days) || 3;
   const isInvoice = kind === 'pending_invoice';
 
   return (
     <>
-      <ScenarioStep n={nextStep()} title="Что ищем">
+      <ScenarioStep n={startStep} title="Что ищем">
         <OptionCards
           options={DISCREPANCY_KINDS}
           value={kind}
@@ -68,7 +68,7 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, nextStep }: Props) => {
         />
       </ScenarioStep>
 
-      <ScenarioStep n={nextStep()} title="Когда считать, что чека нет">
+      <ScenarioStep n={startStep + 1} title="Когда считать, что чека нет">
         <Select value={String(delay)} onValueChange={(v) => onChange({ delay_minutes: Number(v) })}>
           <SelectTrigger>
             <SelectValue />
@@ -83,20 +83,20 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, nextStep }: Props) => {
         </Select>
         {isInvoice ? (
           <div className="space-y-2">
-            <Select value={String(lookback)} onValueChange={(v) => onChange({ lookback_days: Number(v) })}>
+            <Select value={String(lookback)} onValueChange={(v) => onChange({ lookback_days: v === 'year' ? 'year' : Number(v) })}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {LOOKBACK_OPTIONS.map((o) => (
                   <SelectItem key={o.value} value={String(o.value)}>
-                    Смотреть счета за {o.label}
+                    {o.value === 'year' ? 'Смотреть счета за этот год' : `Смотреть счета за ${o.label}`}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Берём счета Екомкассы в статусе «ожидает оплату» за выбранный период. Неоплаченные перепроверяем раз в 6 часов.
+              Берём счета Екомкассы в статусе «ожидает оплату» за выбранный период. Неоплаченные счета за последние 3 дня перепроверяем раз в 6 часов, более старые — проверяем один раз.
             </p>
           </div>
         ) : (
@@ -107,7 +107,7 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, nextStep }: Props) => {
         )}
       </ScenarioStep>
 
-      <ScenarioStep n={nextStep()} title="Проверка">
+      <ScenarioStep n={startStep + 2} title="Проверка">
         <OptionCards
           options={VERIFY_MODES}
           value={verify}
