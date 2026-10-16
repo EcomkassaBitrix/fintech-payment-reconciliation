@@ -29,6 +29,8 @@ JOBS_URL = 'https://functions.poehali.dev/22902813-812b-495a-9ea0-8497b880c461'
 RESYNC_URL = 'https://functions.poehali.dev/0b50cd7c-94bc-4be9-824a-0bb119c6adef'
 # Компаний за шаг: все задачи шага стартуют одновременно, у базы ограничено число подключений.
 TICK_BATCH = 3
+TASK_STAGGER_SEC = 0.3
+TASK_STAGGER_TOTAL_SEC = 2.0
 # Сервис отправки сообщений в мессенджеры и писем (если в настройках не задан свой адрес).
 DEFAULT_MESSENGER_URL = 'https://functions.poehali.dev/ace36e55-b169-41f2-9d2b-546f92221bb7'
 FETCH_ORDERS_URL = 'https://functions.poehali.dev/dc01171b-cd60-4a98-b96c-5d167bc1add8'
@@ -465,9 +467,18 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
     if tasks:
         # Жёсткий предел на рассылку: отдельный urlopen может висеть дольше своего тайм-аута
         # (соединение + TLS + ответ), а шаг обязан уложиться в тайм-аут функции.
+        # Задачи стартуют лесенкой (шаг TASK_STAGGER_SEC), а не все в одну секунду:
+        # одновременный старт 8+ функций упирался в лимит запросов к базе
+        # («rate limit exceeded») и часть загрузок падала посреди работы.
         pool = ThreadPoolExecutor(max_workers=len(tasks))
-        futures = {pool.submit(call, t[1], t[2], 1.2): t[0] for t in tasks}
-        done, _ = wait(futures, timeout=1.6)
+        step = min(TASK_STAGGER_SEC, TASK_STAGGER_TOTAL_SEC / len(tasks))
+
+        def staggered(i, url, body):
+            time.sleep(i * step)
+            return call(url, body, 1.2)
+
+        futures = {pool.submit(staggered, i, t[1], t[2]): t[0] for i, t in enumerate(tasks)}
+        done, _ = wait(futures, timeout=1.6 + len(tasks) * step)
         for f in done:
             err = f.result()
             if err:
