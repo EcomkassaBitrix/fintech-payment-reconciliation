@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import CouponValidUntilField from './CouponValidUntilField';
 import { COUPON_PERIOD_LABELS, randomCode, type CouponPeriod } from '@/lib/couponPeriod';
 
 export interface Coupon {
@@ -37,7 +38,7 @@ interface Props {
 const inMonth = () => {
   const d = new Date();
   d.setMonth(d.getMonth() + 1);
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 const empty = (): Coupon => ({
@@ -132,8 +133,8 @@ const CouponDialog = ({ open, coupon, tariffs, onClose, onSave }: Props) => {
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>Применить до (включительно)</Label>
-            <Input type="date" value={form.valid_until} onChange={(e) => set('valid_until', e.target.value)} />
+            <Label>Применить до</Label>
+            <CouponValidUntilField value={form.valid_until} onChange={(v) => set('valid_until', v)} />
           </div>
           <p className="text-xs text-muted-foreground">
             {form.usage_type === 'single'
