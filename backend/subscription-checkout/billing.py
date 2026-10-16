@@ -13,22 +13,20 @@ REFUND_STATUSES = ('REFUNDED', 'PARTIAL_REFUNDED')
 NOTIFY_COMPANIES: List[int] = []
 
 
-def notify_paid(cur, pay: Dict[str, Any], period_end) -> None:
-    '''Уведомление об оплате подписки: в кабинет и в выбранный сотрудником канал.'''
-    if pay.get('is_test'):
-        return
-    amount = f"{float(pay['amount']):,.2f}".replace(',', ' ').replace('.', ',')
-    until = period_end.strftime('%d.%m.%Y') if hasattr(period_end, 'strftime') else str(period_end)[:10]
-    how = 'Автопродление: списано' if pay.get('is_recurring') else 'Оплачено'
-    message = f"Тариф «{pay['tariff_name']}». {how} {amount} ₽. Подписка действует до {until}."
+def _amount(pay: Dict[str, Any]) -> str:
+    return f"{float(pay['amount']):,.2f}".replace(',', ' ').replace('.', ',')
+
+
+def _notify(cur, pay: Dict[str, Any], kind: str, level: str, title: str, message: str) -> None:
+    '''Уведомление по платежу подписки: в кабинет и в выбранный сотрудником канал (один раз на платёж).'''
     cur.execute(f'''
         INSERT INTO {SCHEMA}.notifications (company_id, kind, level, title, message, link_module, entity_type, entity_id, payload)
-        SELECT %s, 'subscription_paid', 'success', 'Подписка оплачена', %s, 'subscription', 'subscription_payment', %s, %s
+        SELECT %s, %s, %s, %s, %s, 'subscription', 'subscription_payment', %s, %s
         WHERE NOT EXISTS (SELECT 1 FROM {SCHEMA}.notifications
-                          WHERE kind = 'subscription_paid' AND entity_type = 'subscription_payment' AND entity_id = %s)
+                          WHERE kind = %s AND entity_type = 'subscription_payment' AND entity_id = %s)
         RETURNING id
-    ''', (pay['company_id'], message, str(pay['id']),
-          json.dumps({'payment_id': pay['id'], 'amount': float(pay['amount'])}), str(pay['id'])))
+    ''', (pay['company_id'], kind, level, title, message, str(pay['id']),
+          json.dumps({'payment_id': pay['id'], 'amount': float(pay['amount'])}), kind, str(pay['id'])))
     row = cur.fetchone()
     if not row:
         return
@@ -37,10 +35,27 @@ def notify_paid(cur, pay: Dict[str, Any], period_end) -> None:
         SELECT %s, p.user_id, p.channel
         FROM {SCHEMA}.notification_preferences p
         JOIN {SCHEMA}.company_users cu ON cu.company_id = p.company_id AND cu.user_id = p.user_id AND cu.status = 'active'
-        WHERE p.company_id = %s AND p.channel IS NOT NULL AND p.kinds ? 'subscription_paid'
+        WHERE p.company_id = %s AND p.channel IS NOT NULL AND p.kinds ? %s
         ON CONFLICT (notification_id, user_id) DO NOTHING
-    ''', (row[0], pay['company_id']))
+    ''', (row[0], pay['company_id'], kind))
     NOTIFY_COMPANIES.append(pay['company_id'])
+
+
+def notify_paid(cur, pay: Dict[str, Any], period_end) -> None:
+    if pay.get('is_test'):
+        return
+    until = period_end.strftime('%d.%m.%Y') if hasattr(period_end, 'strftime') else str(period_end)[:10]
+    how = 'Автопродление: списано' if pay.get('is_recurring') else 'Оплачено'
+    _notify(cur, pay, 'subscription_paid', 'success', 'Подписка оплачена',
+            f"Тариф «{pay['tariff_name']}». {how} {_amount(pay)} ₽. Подписка действует до {until}.")
+
+
+def notify_renew_failed(cur, pay: Dict[str, Any], reason: str) -> None:
+    if pay.get('is_test') or not pay.get('is_recurring'):
+        return
+    _notify(cur, pay, 'subscription_renew_failed', 'error', 'Автопродление не прошло',
+            f"Тариф «{pay['tariff_name']}», {_amount(pay)} ₽: {reason}. Повторим попытку через 12 часов "
+            f"(в течение 3 дней после окончания срока). Пополните карту или оплатите подписку вручную.")
 
 
 def year_price(price: float, discount: float) -> float:
@@ -185,6 +200,7 @@ def mark_failed(cur, pay: Dict[str, Any], message: str) -> None:
         return
     cur.execute(f'''UPDATE {SCHEMA}.subscription_payments SET status = 'failed', error_message = %s,
                     updated_at = NOW() WHERE id = %s''', (message[:500], pay['id']))
+    notify_renew_failed(cur, pay, message[:300])
 
 
 def mark_refunded(cur, pay: Dict[str, Any], refunded_kop: Optional[int], partial: bool, user_id=None) -> None:
