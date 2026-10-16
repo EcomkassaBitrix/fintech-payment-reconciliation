@@ -65,10 +65,15 @@ def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
     try:
         if not user_id or not is_platform_admin(cur, user_id):
             return respond(403, {'error': 'Только для администратора платформы'})
-        terminal = tbank_billing.load_terminal(cur, only_enabled=False)
+        action = body['action']
+        test_company = body.get('company_id')
+        if not test_company and body.get('payment_id'):
+            cur.execute(f'SELECT company_id FROM {SCHEMA}.subscription_payments WHERE id = %s', (body.get('payment_id'),))
+            found = cur.fetchone()
+            test_company = found[0] if found else None
+        terminal = tbank_billing.load_terminal(cur, only_enabled=False, company_id=test_company)
         if not terminal:
             return respond(400, {'error': 'Терминал Т‑Банка не подключён'})
-        action = body['action']
         if action == 'test_cancel':
             amount = float(body['amount']) if body.get('amount') else None
             result = billing.cancel_payment(cur, terminal, int(body.get('payment_id') or 0), user_id, amount)
@@ -225,7 +230,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         role = member_role(cur, company_id, user_id)
         can_pay = role in PAY_ROLES
         can_coupon = can_pay or bool(user_id and is_platform_admin(cur, user_id))
-        terminal = tbank_billing.load_terminal(cur)
+        terminal = tbank_billing.load_terminal(cur, company_id=company_id)
 
         if method == 'GET':
             cur.execute(f'''
@@ -291,7 +296,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 cur.execute(f'''SELECT card_id, customer_key FROM {SCHEMA}.subscription_cards
                                 WHERE company_id = %s AND is_active = true AND provider_slug = 'tbank' ''', (company_id,))
                 card = cur.fetchone()
-                bank_terminal = tbank_billing.load_terminal(cur, only_enabled=False)
+                bank_terminal = tbank_billing.load_terminal(cur, only_enabled=False, company_id=company_id)
                 if card and card[0] and card[1] and bank_terminal:
                     tbank_billing.call(bank_terminal, 'RemoveCard', {'CardId': card[0], 'CustomerKey': card[1]})
                 cur.execute(f'''UPDATE {SCHEMA}.subscription_cards SET is_active = false, updated_at = NOW()

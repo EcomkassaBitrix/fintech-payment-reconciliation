@@ -274,7 +274,7 @@ def start_checkout(cur, terminal, company_id, user_id, tariff, period, keep, aut
 
 def handle_notification(cur, data: Dict[str, Any]) -> bool:
     '''Уведомление Т‑Банка о статусе платежа подписки. False - подпись не сошлась.'''
-    terminal = tbank_billing.load_terminal(cur, only_enabled=False)
+    terminal = tbank_billing.terminal_by_key(cur, str(data.get('TerminalKey') or ''))
     if not terminal or not tbank_billing.verify(data, terminal['password']):
         print(f"[tbank-notify] bad token or no terminal order={data.get('OrderId')}")
         return False
@@ -296,7 +296,7 @@ def refresh(cur, company_id: int, payment_id: int) -> Optional[Dict[str, Any]]:
     if not pay or pay['company_id'] != int(company_id):
         return None
     if pay['status'] == 'pending' and pay['provider_payment_id']:
-        terminal = tbank_billing.load_terminal(cur, only_enabled=False)
+        terminal = tbank_billing.load_terminal(cur, only_enabled=False, company_id=pay['company_id'])
         if terminal:
             data, _ = tbank_billing.get_state(terminal, pay['provider_payment_id'])
             if data and data.get('Success'):
@@ -390,8 +390,7 @@ def renew_due(cur, conn, budget_seconds: float = 3.2) -> Dict[str, Any]:
     в 12 часов на компанию, чтобы не долбить карту без денег.
     '''
     started = time.time()
-    terminal = tbank_billing.load_terminal(cur)
-    if not terminal:
+    if not tbank_billing.load_terminal(cur):
         return {'skipped': 'terminal', 'renewed': []}
     cur.execute(f'''
         SELECT s.company_id, s.tariff_id, s.renew_period, c.rebill_id,
@@ -416,6 +415,7 @@ def renew_due(cur, conn, budget_seconds: float = 3.2) -> Dict[str, Any]:
         tariff = tariffs.get(tariff_id)
         if not tariff or not owner_id:
             continue
+        terminal = tbank_billing.load_terminal(cur, company_id=company_id)
         res = charge_saved_card(cur, conn, terminal, company_id, tariff, period or 'month', rebill_id, owner_id)
         status = res['status']
         done.append({'company_id': company_id, 'status': status})

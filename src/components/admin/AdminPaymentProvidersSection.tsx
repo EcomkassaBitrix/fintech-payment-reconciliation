@@ -11,6 +11,7 @@ import TbankTerminalForm, { TbankConfig } from './TbankTerminalForm';
 import AdminSubscriptionTransactions from './AdminSubscriptionTransactions';
 import TbankWebhookUrl from './TbankWebhookUrl';
 import TbankTestPanel from './TbankTestPanel';
+import TbankCompanyTestTerminals from './TbankCompanyTestTerminals';
 
 interface PaymentProvider {
   slug: string;
@@ -229,6 +230,7 @@ const AdminPaymentProvidersSection = () => {
                 ))}
                 {isOpen && isTbank && <TbankWebhookUrl />}
                 {isOpen && isTbank && p.connected && <TbankTestPanel receiptOn={Boolean(p.config?.receipt_enabled)} />}
+                {isOpen && isTbank && <TbankCompanyTestTerminals />}
               </CardContent>
             </Card>
           );

@@ -142,6 +142,12 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 return _resp(200, {'success': True, 'authorize_url': f'{AUTHORIZE_URL}?{query}'})
             if action == 'transactions':
                 return _resp(200, subscription_transactions.list_transactions(cur, params))
+            if action == 'company_terminals':
+                cur.execute(f'''SELECT id, COALESCE(NULLIF(full_name, ''), name) FROM {SCHEMA}.companies
+                                WHERE status = 'active' ORDER BY name''')
+                companies = [{'id': r[0], 'name': r[1]} for r in cur.fetchall()]
+                return _resp(200, {'success': True, 'terminals': tbank_terminal.company_terminals(cur),
+                                   'companies': companies})
             if action == 'check' and params.get('slug') == 'tbank':
                 return _resp(200, tbank_terminal.check(cur))
             if action == 'check':
@@ -163,6 +169,12 @@ def yookassa_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                                                          float(body['amount']) if body.get('amount') else None)
                 conn.commit()
                 return _resp(200, result)
+            if action == 'save_company_terminal':
+                err = tbank_terminal.save_company_terminal(cur, body)
+                if err:
+                    return _resp(200, {'success': False, 'error': err})
+                conn.commit()
+                return _resp(200, {'success': True, 'terminals': tbank_terminal.company_terminals(cur)})
             if action == 'save_terminal':
                 err = tbank_terminal.save(cur, body, user_id)
                 if err:

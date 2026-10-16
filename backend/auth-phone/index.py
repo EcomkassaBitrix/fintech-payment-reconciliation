@@ -80,6 +80,9 @@ def send_code(cur, conn, body: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return reply(400, {'error': 'Некорректный номер телефона'})
     if channel not in CHANNEL_PROVIDERS:
         return reply(400, {'error': 'Неизвестный мессенджер'})
+    if purpose == 'login' and fixed_code_hash(cur, phone):
+        return reply(200, {'success': True, 'channel': channel, 'confirmed': True,
+                           'expires_in': CODE_TTL_MINUTES * 60})
 
     cur.execute(f'''
         SELECT COUNT(*) FROM {SCHEMA}.auth_codes
@@ -120,11 +123,23 @@ def send_code(cur, conn, body: Dict[str, Any], context: Any) -> Dict[str, Any]:
                        'expires_in': CODE_TTL_MINUTES * 60})
 
 
+def fixed_code_hash(cur, phone: str) -> Optional[str]:
+    '''Постоянный код входа демо-учётки (для проверяющих банка) - код не отправляется.'''
+    cur.execute(f'SELECT fixed_login_code_hash FROM {SCHEMA}.app_users WHERE phone = %s', (phone,))
+    row = cur.fetchone()
+    return row[0] if row and row[0] else None
+
+
 def check_code(cur, conn, phone: str, code: str) -> Optional[Dict[str, Any]]:
     '''
     Проверка кода: последний неиспользованный неистёкший код номера,
     не больше 5 попыток. Возвращает ответ-ошибку или None, если код верный.
     '''
+    fixed = fixed_code_hash(cur, phone)
+    if fixed:
+        if hmac.compare_digest(fixed, hash_code(phone, re.sub(r'\D', '', code or ''))):
+            return None
+        return reply(400, {'error': 'Неверный код', 'error_code': 'wrong_code'})
     cur.execute(f'''
         SELECT id, code_hash, attempts FROM {SCHEMA}.auth_codes
         WHERE phone = %s AND used_at IS NULL AND expires_at > NOW()

@@ -13,20 +13,39 @@ SITE_URL = 'https://s-verka.ru'
 SSL_CONTEXT = build_ssl_context()
 
 
-def load_terminal(cur, only_enabled: bool = True) -> Optional[Dict[str, Any]]:
+def load_terminal(cur, only_enabled: bool = True, company_id=None) -> Optional[Dict[str, Any]]:
     '''
     Терминал Т‑Банка платформы. only_enabled - только если включён «Принимать оплату» (новые оплаты клиентов).
     Уведомления, статусы, возвраты и тест из админки работают с подключённым терминалом и при выключенном приёме.
+    Если у компании задан свой тестовый терминал (демо-учётка для проверки банком) - берём его,
+    настройки чека - от терминала платформы.
     '''
     cur.execute(f'''
-        SELECT terminal_key, terminal_password, is_test, config FROM {SCHEMA}.platform_payment_providers
-        WHERE slug = 'tbank' AND terminal_key IS NOT NULL AND terminal_password IS NOT NULL
-          AND (is_enabled = true OR %s = false)
-    ''', (only_enabled,))
+        SELECT terminal_key, terminal_password, is_test, config, is_enabled FROM {SCHEMA}.platform_payment_providers
+        WHERE slug = 'tbank'
+    ''')
     r = cur.fetchone()
-    if not r:
+    config = (r[3] if r else None) or {}
+    if company_id:
+        cur.execute(f'''SELECT test_terminal_key, test_terminal_password FROM {SCHEMA}.companies
+                        WHERE id = %s AND test_terminal_key IS NOT NULL AND test_terminal_password IS NOT NULL''',
+                    (int(company_id),))
+        t = cur.fetchone()
+        if t:
+            return {'terminal_key': t[0], 'password': t[1], 'is_test': True, 'config': config, 'company_test': True}
+    if not r or not r[0] or not r[1] or (only_enabled and not r[4]):
         return None
-    return {'terminal_key': r[0], 'password': r[1], 'is_test': r[2], 'config': r[3] or {}}
+    return {'terminal_key': r[0], 'password': r[1], 'is_test': r[2], 'config': config}
+
+
+def terminal_by_key(cur, terminal_key: str) -> Optional[Dict[str, Any]]:
+    '''Терминал по TerminalKey из уведомления банка: платформы или тестовый терминал компании.'''
+    platform = load_terminal(cur, only_enabled=False)
+    if platform and platform['terminal_key'] == terminal_key:
+        return platform
+    cur.execute(f'SELECT id FROM {SCHEMA}.companies WHERE test_terminal_key = %s LIMIT 1', (terminal_key,))
+    row = cur.fetchone()
+    return load_terminal(cur, only_enabled=False, company_id=row[0]) if row else platform
 
 
 def make_token(payload: Dict[str, Any], password: str) -> str:

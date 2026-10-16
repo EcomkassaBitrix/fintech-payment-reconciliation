@@ -51,9 +51,16 @@ def _refund_receipt(cur, payment_id: int, amount_kop: int) -> Optional[Dict[str,
 
 
 def _tbank_cancel(cur, payment_id: str, amount_kop: int,
-                  receipt: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    cur.execute(f"SELECT terminal_key, terminal_password FROM {SCHEMA}.platform_payment_providers WHERE slug = 'tbank'")
-    row = cur.fetchone()
+                  receipt: Optional[Dict[str, Any]] = None, company_id=None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    row = None
+    if company_id:
+        cur.execute(f'''SELECT test_terminal_key, test_terminal_password FROM {SCHEMA}.companies
+                        WHERE id = %s AND test_terminal_key IS NOT NULL AND test_terminal_password IS NOT NULL''',
+                    (company_id,))
+        row = cur.fetchone()
+    if not row:
+        cur.execute(f"SELECT terminal_key, terminal_password FROM {SCHEMA}.platform_payment_providers WHERE slug = 'tbank'")
+        row = cur.fetchone()
     if not row or not row[0] or not row[1]:
         return None, 'Терминал Т‑Банка не подключён'
     body: Dict[str, Any] = {'TerminalKey': row[0], 'PaymentId': payment_id, 'Amount': amount_kop}
@@ -142,7 +149,7 @@ def refund(cur, payment_id: int, user_id, amount: Optional[float] = None) -> Dic
         return {'success': False, 'error': f'Вернуть можно не больше {left} ₽'}
     partial = want < tx['amount']
     rec = _refund_receipt(cur, payment_id, int(round(want * 100)))
-    data, err = _tbank_cancel(cur, r[15], int(round(want * 100)), rec)
+    data, err = _tbank_cancel(cur, r[15], int(round(want * 100)), rec, company_id=r[1])
     if err:
         return {'success': False, 'error': err}
     status = (data or {}).get('Status')

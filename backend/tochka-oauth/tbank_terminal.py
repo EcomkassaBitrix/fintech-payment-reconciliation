@@ -3,7 +3,7 @@ import re
 import json
 import urllib.error
 import urllib.request
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ru_trusted_ca import build_ssl_context
 
@@ -85,3 +85,41 @@ def check(cur) -> Dict[str, Any]:
     if not ok:
         return {'success': False, 'error': err}
     return {'success': True, 'shop': {'account_id': row[0], 'test': row[0].upper().endswith('DEMO'), 'status': 'терминал отвечает'}}
+
+
+def company_terminals(cur) -> List[Dict[str, Any]]:
+    """Компании с тестовым терминалом Т‑Банка (демо-учётки для проверки банком)."""
+    cur.execute(f'''
+        SELECT id, COALESCE(NULLIF(full_name, ''), name), test_terminal_key, test_terminal_updated_at
+        FROM {SCHEMA}.companies WHERE test_terminal_key IS NOT NULL ORDER BY id
+    ''')
+    return [{'company_id': r[0], 'company_name': r[1], 'terminal_key': r[2],
+             'updated_at': r[3].isoformat() if r[3] else None} for r in cur.fetchall()]
+
+
+def save_company_terminal(cur, body: Dict[str, Any]) -> Optional[str]:
+    """Тестовый терминал компании: пустой TerminalKey - отключить, иначе проверяем пару у банка."""
+    try:
+        company_id = int(body.get('company_id') or 0)
+    except (TypeError, ValueError):
+        company_id = 0
+    cur.execute(f'SELECT test_terminal_key, test_terminal_password FROM {SCHEMA}.companies WHERE id = %s', (company_id,))
+    row = cur.fetchone()
+    if not row:
+        return 'Компания не найдена'
+    key = str(body.get('terminal_key') or '').strip()
+    password = str(body.get('terminal_password') or '').strip()
+    if not key:
+        cur.execute(f'''UPDATE {SCHEMA}.companies SET test_terminal_key = NULL, test_terminal_password = NULL,
+                        test_terminal_updated_at = NOW() WHERE id = %s''', (company_id,))
+        return None
+    if not password and row[0] == key:
+        password = row[1] or ''
+    if not password:
+        return 'Укажите пароль терминала'
+    ok, err = _probe(key, password)
+    if not ok:
+        return err
+    cur.execute(f'''UPDATE {SCHEMA}.companies SET test_terminal_key = %s, test_terminal_password = %s,
+                    test_terminal_updated_at = NOW() WHERE id = %s''', (key, password, company_id))
+    return None
