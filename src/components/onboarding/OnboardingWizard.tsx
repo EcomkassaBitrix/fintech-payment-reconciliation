@@ -5,7 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import Icon from '@/components/ui/icon';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationPreferences from '@/components/settings/NotificationPreferences';
-import { finishOnboarding, ONBOARDING_STEPS, onboardingStep, saveOnboardingStep } from '@/lib/onboarding';
+import { finishOnboarding, ONBOARDING_EVENT, ONBOARDING_STEPS, onboardingStep, saveOnboardingStep } from '@/lib/onboarding';
 import OnboardingSections from './OnboardingSections';
 import OnboardingProfile from './OnboardingProfile';
 import OnboardingIntegrations from './OnboardingIntegrations';
@@ -35,6 +35,12 @@ const OnboardingWizard = ({ onConnect, onSetupReceipts }: Props) => {
   useEffect(() => {
     setStep(onboardingStep(companyId));
     setOpen(true);
+    const restart = () => {
+      setStep(onboardingStep(companyId));
+      setOpen(true);
+    };
+    window.addEventListener(ONBOARDING_EVENT, restart);
+    return () => window.removeEventListener(ONBOARDING_EVENT, restart);
   }, [companyId]);
 
   if (!companyId || step === null) return null;

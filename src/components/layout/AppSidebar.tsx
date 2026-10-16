@@ -13,6 +13,7 @@ import {
 import { useAuth, Company } from '@/contexts/AuthContext';
 import { isLockedByTariff, menuModules } from '@/config/modules';
 import ProfileDialog from '@/components/profile/ProfileDialog';
+import { startOnboarding } from '@/lib/onboarding';
 
 interface AppSidebarProps {
   activeModule: string;
@@ -147,6 +148,12 @@ const UserProfileMenu = ({ onOpenSettings, onOpenSubscription, onOpenNotificatio
               <Icon name="Settings" size={18} className="text-muted-foreground" />
               Настройки
             </DropdownMenuItem>
+            {currentCompany && (
+              <DropdownMenuItem className={itemClass} onSelect={() => startOnboarding(currentCompany.id)}>
+                <Icon name="Sparkles" size={18} className="text-muted-foreground" />
+                Пройти настройку заново
+              </DropdownMenuItem>
+            )}
           </div>
           <DropdownMenuSeparator className="m-0" />
           <div className="p-1.5">

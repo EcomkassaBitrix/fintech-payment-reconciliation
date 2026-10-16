@@ -14,7 +14,12 @@ const write = (store: Store) => localStorage.setItem(KEY, JSON.stringify(store))
 
 export const ONBOARDING_STEPS = 5;
 
-export const startOnboarding = (companyId: number) => write({ ...read(), [companyId]: 0 });
+export const ONBOARDING_EVENT = 'ek-onboarding-start';
+
+export const startOnboarding = (companyId: number) => {
+  write({ ...read(), [companyId]: 0 });
+  window.dispatchEvent(new Event(ONBOARDING_EVENT));
+};
 
 export const onboardingStep = (companyId?: number | null): number | null => {
   if (!companyId) return null;
