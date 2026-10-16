@@ -10,6 +10,37 @@ SCHEMA = 't_p83864310_fintech_payment_reco'
 FAILED_STATUSES = ('REJECTED', 'DEADLINE_EXPIRED', 'AUTH_FAIL', 'ATTEMPTS_EXPIRED')
 CANCELED_STATUSES = ('CANCELED', 'REVERSED')
 REFUND_STATUSES = ('REFUNDED', 'PARTIAL_REFUNDED')
+NOTIFY_COMPANIES: List[int] = []
+
+
+def notify_paid(cur, pay: Dict[str, Any], period_end) -> None:
+    '''Уведомление об оплате подписки: в кабинет и в выбранный сотрудником канал.'''
+    if pay.get('is_test'):
+        return
+    amount = f"{float(pay['amount']):,.2f}".replace(',', ' ').replace('.', ',')
+    until = period_end.strftime('%d.%m.%Y') if hasattr(period_end, 'strftime') else str(period_end)[:10]
+    how = 'Автопродление: списано' if pay.get('is_recurring') else 'Оплачено'
+    message = f"Тариф «{pay['tariff_name']}». {how} {amount} ₽. Подписка действует до {until}."
+    cur.execute(f'''
+        INSERT INTO {SCHEMA}.notifications (company_id, kind, level, title, message, link_module, entity_type, entity_id, payload)
+        SELECT %s, 'subscription_paid', 'success', 'Подписка оплачена', %s, 'subscription', 'subscription_payment', %s, %s
+        WHERE NOT EXISTS (SELECT 1 FROM {SCHEMA}.notifications
+                          WHERE kind = 'subscription_paid' AND entity_type = 'subscription_payment' AND entity_id = %s)
+        RETURNING id
+    ''', (pay['company_id'], message, str(pay['id']),
+          json.dumps({'payment_id': pay['id'], 'amount': float(pay['amount'])}), str(pay['id'])))
+    row = cur.fetchone()
+    if not row:
+        return
+    cur.execute(f'''
+        INSERT INTO {SCHEMA}.notification_deliveries (notification_id, user_id, channel)
+        SELECT %s, p.user_id, p.channel
+        FROM {SCHEMA}.notification_preferences p
+        JOIN {SCHEMA}.company_users cu ON cu.company_id = p.company_id AND cu.user_id = p.user_id AND cu.status = 'active'
+        WHERE p.company_id = %s AND p.channel IS NOT NULL AND p.kinds ? 'subscription_paid'
+        ON CONFLICT (notification_id, user_id) DO NOTHING
+    ''', (row[0], pay['company_id']))
+    NOTIFY_COMPANIES.append(pay['company_id'])
 
 
 def year_price(price: float, discount: float) -> float:
@@ -144,6 +175,7 @@ def mark_paid(cur, pay: Dict[str, Any], data: Dict[str, Any]):
                 renew_period = %s, card_id = COALESCE(%s, card_id), updated_at = NOW()
             WHERE company_id = %s
         ''', (not pay['is_recurring'], pay['auto_renew'], pay['period'], card_id, pay['company_id']))
+    notify_paid(cur, pay, period_end)
     print(f"subscription paid company={pay['company_id']} payment={pay['id']} until={period_end}")
     return period_end
 

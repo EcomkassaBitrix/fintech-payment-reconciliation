@@ -34,7 +34,8 @@ const MODULE_LABELS: Record<string, string> = {
   automation: 'Открыть автоматизацию',
   transactions: 'Открыть транзакции',
   reconciliation: 'Открыть сверку',
-  integrations: 'Открыть интеграции'
+  integrations: 'Открыть интеграции',
+  subscription: 'Открыть подписку'
 };
 
 const timeAgo = (value: string) => {

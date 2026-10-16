@@ -23,6 +23,7 @@ KINDS = {
     'automation_failed': 'Сценарий автоматизации не выполнен',
     'receipt_failed': 'Касса не пробила чек сценария (с причиной отказа)',
     'missing_receipts': 'Платежи без чека за вчера',
+    'subscription_paid': 'Оплата подписки Сверки (в т.ч. автопродление)',
 }
 TRANSACTIONS_URL = 'https://functions.poehali.dev/d977ccf7-aaab-48a4-b418-798c34bc70ec'
 CHANNELS = {'max': 'ek_max', 'whatsapp': 'ek_wa', 'telegram': 'ek_tg', 'email': 'ek_email'}

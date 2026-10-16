@@ -1,15 +1,17 @@
 import json
 import os
+import urllib.request
 from typing import Any, Dict
 
 import psycopg2
-from auth_guard import guard, is_platform_admin
+from auth_guard import guard, internal_headers, is_platform_admin
 import billing
 import coupons
 import downgrade
 import tbank_billing
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
+NOTIFICATIONS_URL = 'https://functions.poehali.dev/8f4541fc-6ff8-4816-a954-324e4278743d'
 PAY_ROLES = ('owner', 'admin')
 
 
@@ -135,6 +137,25 @@ def admin_test(event: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    '''Подписка и оплата тарифа; после подтверждённой оплаты - сигнал на рассылку уведомлений.'''
+    billing.NOTIFY_COMPANIES.clear()
+    response = _handle(event, context)
+    for company_id in set(billing.NOTIFY_COMPANIES):
+        try:
+            req = urllib.request.Request(
+                NOTIFICATIONS_URL,
+                data=json.dumps({'action': 'dispatch', 'company_id': company_id}).encode('utf-8'),
+                headers={'Content-Type': 'application/json', **internal_headers()},
+                method='POST'
+            )
+            urllib.request.urlopen(req, timeout=1.5).close()
+        except Exception:
+            pass
+    billing.NOTIFY_COMPANIES.clear()
+    return response
+
+
+def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Подписка компании: тарифы, история оплат, оплата через Т‑Банк с сохранением карты и автопродление.
     GET ?company_id= - тарифы, текущая подписка, история, карта/автопродление, способ оплаты
