@@ -8,7 +8,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
 from auth_guard import guard, internal_headers
@@ -250,6 +250,56 @@ def call(url: str, body: Dict[str, Any], timeout: float) -> Optional[str]:
         return str(e)[:200]
 
 
+EXPIRED_NOTICE_HOUR = 9
+
+
+def subscription_expired(cur) -> List[Tuple[int, int]]:
+    '''
+    Подписка или пробный период закончились и не продлены: уведомление на следующий день после
+    окончания, не раньше 9:00 по часовому поясу компании (опоздавший шаг - до конца второго дня).
+    Пояса считаем в коде: функции поясов в SQL платформа запрещает.
+    '''
+    cur.execute(f'''
+        SELECT s.company_id, c.timezone, t.name, s.status = 'trial',
+               CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END AS ends_at
+        FROM {SCHEMA}.subscriptions s
+        JOIN {SCHEMA}.companies c ON c.id = s.company_id AND c.status = 'active'
+        LEFT JOIN {SCHEMA}.tariffs t ON t.id = s.tariff_id
+        WHERE CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END
+              BETWEEN NOW() - INTERVAL '4 days' AND NOW()
+    ''')
+    created: List[Tuple[int, int]] = []
+    for company_id, zone, tariff_name, is_trial, ends_at in cur.fetchall():
+        try:
+            zone_info = ZoneInfo(zone or 'Europe/Moscow')
+        except Exception:
+            zone_info = ZoneInfo('Europe/Moscow')
+        end_day = ends_at.replace(tzinfo=dt_timezone.utc).astimezone(zone_info).date()
+        local_now = datetime.now(zone_info)
+        if (local_now.date() - end_day).days not in (1, 2):
+            continue
+        if local_now.date() - end_day == timedelta(days=1) and local_now.hour < EXPIRED_NOTICE_HOUR:
+            continue
+        entity_id = f'{company_id}:{end_day.isoformat()}'
+        what = 'Пробный период' if is_trial else f"Подписка на тариф «{tariff_name or '—'}»"
+        cur.execute(f'''
+            INSERT INTO {SCHEMA}.notifications (company_id, kind, level, title, message, link_module, entity_type, entity_id, payload)
+            SELECT %s, 'subscription_expired', 'error', %s, %s, 'subscription', 'subscription_expired', %s, %s
+            WHERE NOT EXISTS (SELECT 1 FROM {SCHEMA}.notifications
+                              WHERE kind = 'subscription_expired' AND entity_type = 'subscription_expired' AND entity_id = %s)
+            RETURNING id
+        ''', (company_id,
+              'Пробный период закончился' if is_trial else 'Подписка закончилась',
+              f"{what} {'закончился' if is_trial else 'закончилась'} {end_day.strftime('%d.%m.%Y')}"
+              f" и не {'продлён' if is_trial else 'продлена'}. "
+              'Оплатите подписку, чтобы снова работали сверка, загрузка данных и автоматические чеки.',
+              entity_id, json.dumps({'ends_at': ends_at.isoformat()}), entity_id))
+        row = cur.fetchone()
+        if row:
+            created.append((row[0], company_id))
+    return created
+
+
 def subscription_reminders(cur, conn) -> List[int]:
     '''
     Напоминание за 3 дня до конца подписки или пробного периода, если автопродление не сработает
@@ -281,7 +331,7 @@ def subscription_reminders(cur, conn) -> List[int]:
                             AND n.entity_id = e.company_id::text || ':' || to_char(e.ends_at, 'YYYY-MM-DD'))
         RETURNING id, company_id
     ''')
-    created = cur.fetchall()
+    created = cur.fetchall() + subscription_expired(cur)
     for notification_id, company_id in created:
         cur.execute(f'''
             INSERT INTO {SCHEMA}.notification_deliveries (notification_id, user_id, channel)
