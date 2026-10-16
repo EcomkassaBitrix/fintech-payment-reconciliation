@@ -592,19 +592,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     CASE
                         WHEN bst.parent_transaction_id IS NOT NULL THEN 'money'
                         WHEN lp.id IS NOT NULL OR wpm.id IS NOT NULL THEN 'payment'
+                        WHEN rqr.id IS NOT NULL THEN 'receipt_kassa'
                         WHEN mm.id IS NOT NULL THEN 'money'
                     END AS linked_type,
                     CASE
                         WHEN bst.parent_transaction_id IS NOT NULL THEN bst.provider_slug
                         WHEN lp.id IS NOT NULL THEN lp.provider_slug
                         WHEN wpm.id IS NOT NULL THEN wpm.provider_slug
+                        WHEN rqr.id IS NOT NULL THEN 'ecomkassa'
                         WHEN mm.id IS NOT NULL THEN mm.provider_slug
                     END AS linked_source,
-                    COALESCE(bst.parent_transaction_id, lp.id, wpm.id, mm.id) AS linked_id,
+                    COALESCE(bst.parent_transaction_id, lp.id, wpm.id, rqr.id, mm.id) AS linked_id,
                     CASE
                         WHEN bst.parent_transaction_id IS NOT NULL THEN 'acquiring_commission'
                         WHEN lp.id IS NOT NULL THEN 'settlement_date'
                         WHEN wpm.id IS NOT NULL THEN wpm.match_method
+                        WHEN rqr.id IS NOT NULL THEN 'qr_id'
                         WHEN mm.id IS NOT NULL THEN 'qr_id'
                     END AS match_method,
                     NULL::text AS group_key,
@@ -655,6 +658,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     ORDER BY qr_match.id IS NOT NULL DESC
                     LIMIT 1
                 ) wpm ON true
+                -- Запасная связь: платёж шлюза мог не прийти (нет уведомления),
+                -- но чек Екомкассы по счёту СБП есть - в его invoice_payload.link
+                -- тот же QR ID, что банк пишет в назначении. Связываем деньги с чеком.
+                LEFT JOIN LATERAL (
+                    SELECT ekq.id
+                    FROM {SCHEMA}.ecomkassa_receipts ekq
+                    WHERE wpm.id IS NULL
+                      AND ekq.company_id = bst.company_id AND ekq.removed_at IS NULL
+                      AND ekq.merged_into_id IS NULL
+                      AND substring(bst.purpose FROM 'QR\\s*(?:коду\\s+)?ID\\s+([A-Za-z0-9]+)') IS NOT NULL
+                      AND ekq.raw_data->'invoice_payload'->>'link' LIKE '%%/' || substring(bst.purpose FROM 'QR\\s*(?:коду\\s+)?ID\\s+([A-Za-z0-9]+)') || '%%'
+                    ORDER BY ekq.is_correction IS TRUE, ekq.id
+                    LIMIT 1
+                ) rqr ON true
                 -- Комиссия СБП приходит ОТДЕЛЬНОЙ строкой банковской выписки
                 -- (не платежом Екомкассы), поэтому связь "приход <-> его
                 -- комиссия" - это money<->money, а не money<->payment. Ищем
@@ -667,7 +684,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 LEFT JOIN LATERAL (
                     SELECT bst2.id, bst2.provider_slug
                     FROM {SCHEMA}.bank_statement_transactions bst2
-                    WHERE wpm.id IS NULL
+                    WHERE wpm.id IS NULL AND rqr.id IS NULL
                       AND bst2.id != bst.id
                       AND bst2.company_id = bst.company_id
                       AND bst2.removed_at IS NULL
