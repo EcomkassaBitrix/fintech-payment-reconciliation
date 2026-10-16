@@ -48,7 +48,7 @@ const HeroSection = ({ onCtaClick, trialDays }: { onCtaClick: () => void; trialD
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Без банковской карты. Отменить можно в любой момент.
+              С банковской картой. Отменить можно в любой момент.
             </p>
           </div>
 
