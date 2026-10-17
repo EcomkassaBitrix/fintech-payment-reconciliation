@@ -16,6 +16,7 @@ import ScenarioPaymentStatuses from './ScenarioPaymentStatuses';
 import { notifyOptionsFor } from '@/components/integrations/providerFieldsConfig';
 import ScenarioCrmMapping from './ScenarioCrmMapping';
 import ScenarioDiscrepancyFields from './ScenarioDiscrepancyFields';
+import OptionList from './OptionList';
 import {
   ACTIONS,
   AGENT_MAPPING_FIELDS,
@@ -285,21 +286,11 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
           )}
 
           <ScenarioStep n={step++} title="Действие">
-            <div className={`grid gap-2 ${actionKeys.length > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-              {actionKeys.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setAction(key)}
-                  className={`flex items-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all ${
-                    form.action_type === key ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                  }`}
-                >
-                  <Icon name={ACTIONS[key].icon} size={18} className={form.action_type === key ? 'text-primary' : 'text-muted-foreground'} />
-                  {ACTIONS[key].label}
-                </button>
-              ))}
-            </div>
+            <OptionList
+              options={actionKeys.map((key) => ({ value: key, ...ACTIONS[key] }))}
+              value={form.action_type}
+              onSelect={setAction}
+            />
           </ScenarioStep>
 
           <ScenarioStep n={step++} title="Шаблон действия">
