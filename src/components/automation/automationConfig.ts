@@ -57,7 +57,7 @@ export const TRIGGERS: Record<TriggerType, { label: string; icon: string; descri
 
 export const ACTIONS: Record<ActionType, { label: string; icon: string; description: string }> = {
   create_receipt: { label: 'Создать чек', icon: 'Receipt', description: 'Пробиваем чек в подключённой кассе по выбранному шаблону' },
-  create_order: { label: 'Создать заказ', icon: 'Truck', description: 'Передаём заказ в службу доставки' }
+  create_order: { label: 'Создать заказ', icon: 'Truck', description: 'Передаём заказ на доставку через сервис Екомкасса' }
 };
 
 // Шаблоны действий приходят из каталога платформы (админка → «Шаблоны действий»).
