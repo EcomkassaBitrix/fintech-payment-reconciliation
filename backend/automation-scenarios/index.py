@@ -131,9 +131,17 @@ def validate(cur, company_id: int, body: Dict[str, Any]) -> Optional[str]:
             return 'Неизвестный вид расхождения'
         if (mapping.get('verify_mode') or 'none') not in ('none', 'payment_system', 'bank'):
             return 'Неизвестный тип проверки'
+        if kind == 'missing_receipt':
+            mapping['verify_mode'] = 'none'
+            mapping.pop('verify_integration_ids', None)
         if kind == 'pending_invoice':
-            if mapping.get('verify_mode') not in ('payment_system', 'bank'):
-                return 'Для счетов «ожидает оплату» нужна проверка в платёжной системе или в банке'
+            ids = mapping.get('verify_integration_ids') or []
+            if mapping.get('verify_mode') == 'payment_system':
+                if not isinstance(ids, list) or not ids or not all(str(i).isdigit() for i in ids):
+                    return 'Отметьте платёжные системы, в которых проверять оплату'
+                mapping['verify_integration_ids'] = [int(i) for i in ids]
+            else:
+                mapping.pop('verify_integration_ids', None)
             try:
                 lookback = 1 if mapping.get('lookback_days') == 'year' else int(mapping.get('lookback_days') or 3)
             except (TypeError, ValueError):

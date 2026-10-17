@@ -208,12 +208,17 @@ def _prepare_pending_invoice(cur, job: Dict[str, Any], scenario: Dict[str, Any])
     ''', (job['company_id'], uid))
     if cur.fetchone()[0]:
         return 'skipped', info, f'По счёту {uid} в Екомкассе уже есть пробитый чек - коррекция не нужна'
-    if (scenario.get('field_mapping') or {}).get('verify_mode') == 'bank':
+    mapping = scenario.get('field_mapping') or {}
+    if mapping.get('verify_mode') == 'none':
+        where = 'Без проверки'
+        verdict, message, paid = 'paid', f'счёт {uid} в «ожидает оплату», оплату не проверяли', {'system': 'Екомкасса (без проверки)'}
+    elif mapping.get('verify_mode') == 'bank':
         where = 'Проверка в банке'
         verdict, message, paid = payment_verify.verify_bank(cur, job['company_id'], [uid, payload.get('external_id')], [])
     else:
         where = 'Проверка в платёжной системе'
-        verdict, message, paid = payment_verify.verify_order(cur, job['company_id'], uid)
+        ids = [int(i) for i in (mapping.get('verify_integration_ids') or []) if str(i).isdigit()]
+        verdict, message, paid = payment_verify.verify_order(cur, job['company_id'], uid, ids or None)
     if verdict == 'not_paid':
         return 'skipped', info, f'{where}: {message} - чек не нужен, перепроверим позже'
     if verdict != 'paid':

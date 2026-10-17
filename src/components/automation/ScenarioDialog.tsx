@@ -279,9 +279,8 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
             <ScenarioDiscrepancyFields
               mapping={form.field_mapping}
               onChange={(patch) => setForm({ ...form, field_mapping: { ...form.field_mapping, ...patch } })}
-              startStep={(step += 3) - 3}
-              hasPayments={integrations.some((i) => i.category === 'payments')}
-              hasBanks={integrations.some((i) => i.category === 'banks')}
+              startStep={(step += form.field_mapping.discrepancy_kind === 'pending_invoice' ? 3 : 2) - (form.field_mapping.discrepancy_kind === 'pending_invoice' ? 3 : 2)}
+              paymentSystems={integrations.filter((i) => i.category === 'payments' && i.providerSlug !== 'ecomkassa_gateway')}
             />
           )}
 

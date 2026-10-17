@@ -1,29 +1,32 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import Icon from '@/components/ui/icon';
 import ScenarioStep from './ScenarioStep';
 import OptionList from './OptionList';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   DEFAULT_DISCREPANCY_DELAY,
   DISCREPANCY_DELAY_OPTIONS,
   DISCREPANCY_KINDS,
   DiscrepancyKind,
   LOOKBACK_OPTIONS,
-  VERIFY_MODES,
-  VerifyMode,
-  BANK_VERIFY_ENABLED
+  IntegrationOption,
+  ORDER_CHECK_PROVIDERS
 } from './automationConfig';
 
 interface Props {
   mapping: Record<string, unknown>;
   onChange: (patch: Record<string, unknown>) => void;
   startStep: number;
-  hasPayments: boolean;
-  hasBanks: boolean;
+  paymentSystems: IntegrationOption[];
 }
 
-const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep, hasPayments, hasBanks }: Props) => {
+const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep, paymentSystems }: Props) => {
   const kind = (mapping.discrepancy_kind as DiscrepancyKind) || 'missing_receipt';
-  const verify = (mapping.verify_mode as VerifyMode) || 'none';
+  const checkIds = Array.isArray(mapping.verify_integration_ids) ? (mapping.verify_integration_ids as number[]) : [];
+  const verifyIds = mapping.verify_mode === 'payment_system' ? checkIds : [];
+  const toggleSystem = (id: number) => {
+    const next = verifyIds.includes(id) ? verifyIds.filter((x) => x !== id) : [...verifyIds, id];
+    onChange(next.length ? { verify_mode: 'payment_system', verify_integration_ids: next } : { verify_mode: 'none', verify_integration_ids: [] });
+  };
   const delay = Number(mapping.delay_minutes) || DEFAULT_DISCREPANCY_DELAY;
   const lookback = mapping.lookback_days === 'year' ? 'year' : Number(mapping.lookback_days) || 3;
   const isInvoice = kind === 'pending_invoice';
@@ -37,8 +40,8 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep, hasPayments, 
           onSelect={(v) =>
             onChange(
               v === 'pending_invoice'
-                ? { discrepancy_kind: v, verify_mode: 'payment_system', lookback_days: lookback }
-                : { discrepancy_kind: v }
+                ? { discrepancy_kind: v, verify_mode: 'none', verify_integration_ids: [], lookback_days: lookback }
+                : { discrepancy_kind: v, verify_mode: 'none', verify_integration_ids: [] }
             )
           }
         />
@@ -83,44 +86,54 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep, hasPayments, 
         )}
       </ScenarioStep>
 
-      <ScenarioStep n={startStep + 2} title="Проверка">
-        <OptionList
-          options={VERIFY_MODES.filter((m) => m.value !== 'bank' || (BANK_VERIFY_ENABLED && hasBanks))}
-          value={verify}
-          onSelect={(v) => onChange({ verify_mode: v })}
-          disabled={(v) =>
-            v === 'none'
-              ? isInvoice && 'Для зависших счетов нужна проверка'
-              : v === 'payment_system'
-                ? !hasPayments && 'Подключите платёжную систему в разделе «Платежи»'
-                : !hasBanks && 'Подключите расчётный счёт в разделе «Банки»'
-          }
-        />
-        {verify === 'bank' && (
-          <div className="flex gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-            <Icon name="Landmark" size={16} className="mt-0.5 shrink-0 text-primary" />
-            <div className="space-y-1">
-              <p>
-                Ищем в выписках подключённых расчётных счетов входящее поступление, в назначении которого есть {isInvoice ? 'номер счёта Екомкассы' : 'номер платежа или заказа'}, или зачисление, уже привязанное к платежу в сверке.
-              </p>
-              <p>Нашли — пробиваем чек. Не нашли — чек не пробиваем. Выписка обновляется по расписанию банка, поэтому свежих поступлений в ней может ещё не быть.</p>
-            </div>
+      {isInvoice && (
+        <ScenarioStep n={startStep + 2} title="Проверка оплаты">
+          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            <button
+              type="button"
+              onClick={() => onChange({ verify_mode: 'none', verify_integration_ids: [] })}
+              className={`flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors ${verifyIds.length === 0 ? 'bg-primary/5' : 'hover:bg-muted/50'}`}
+            >
+              <Checkbox checked={verifyIds.length === 0} className="mt-0.5 pointer-events-none" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Без проверки</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Считаем счёт оплаченным и пробиваем чек коррекции сразу</span>
+              </span>
+            </button>
+            {paymentSystems.map((ps) => {
+              const supported = !!ps.providerSlug && ORDER_CHECK_PROVIDERS.includes(ps.providerSlug);
+              const on = verifyIds.includes(ps.id);
+              return (
+                <button
+                  key={ps.id}
+                  type="button"
+                  disabled={!supported}
+                  onClick={() => toggleSystem(ps.id)}
+                  className={`flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${on ? 'bg-primary/5' : 'hover:bg-muted/50'}`}
+                >
+                  <Checkbox checked={on} disabled={!supported} className="mt-0.5 pointer-events-none" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Проверка в «{ps.name}»</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {supported
+                        ? `${ps.providerName}: ищем номер счёта Екомкассы как номер заказа, чек — только если «оплачен»`
+                        : `${ps.providerName}: проверка по номеру заказа пока не поддерживается`}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        )}
-        {verify === 'payment_system' && (
-          <div className="flex gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-            <Icon name="ShieldCheck" size={16} className="mt-0.5 shrink-0 text-primary" />
-            <div className="space-y-1">
-              {isInvoice ? (
-                <p>Номер счёта Екомкассы ищем как номер заказа в подключённом эквайринге Т-Банка или Альфа-Банка.</p>
-              ) : (
-                <p>Статус спрашиваем у платёжки, откуда пришёл платёж: Т-Банк, Альфа-Банк, шлюз Екомкассы (через Т-Банк / Альфа-Банк).</p>
-              )}
-              <p>«Оплачен» — пробиваем чек и отмечаем платёж оплаченным. Не оплачен или отменён — чек не нужен. Банк не ответил — повторим позже.</p>
-            </div>
-          </div>
-        )}
-      </ScenarioStep>
+          {paymentSystems.length === 0 && (
+            <p className="text-xs text-muted-foreground">Чтобы проверять оплату, подключите эквайринг в разделе «Платежи».</p>
+          )}
+          {verifyIds.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Оплачен хотя бы в одной из отмеченных — пробиваем чек и отмечаем платёж оплаченным. Не оплачен — чек не нужен. Банк не ответил — повторим позже.
+            </p>
+          )}
+        </ScenarioStep>
+      )}
     </>
   );
 };

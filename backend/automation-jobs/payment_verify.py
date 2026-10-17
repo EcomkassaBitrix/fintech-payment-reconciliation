@@ -96,14 +96,17 @@ def _alfa(config: Dict[str, Any], md_order: Optional[str], order_number: Optiona
 ORDER_CHECKERS = {'tbank': ('Т-Банк', _tbank_by_order), 'alfabank': ('Альфа-Банк', lambda c, o: _alfa(c, None, o))}
 
 
-def verify_order(cur, company_id: int, order_id: str) -> Verdict:
+def verify_order(cur, company_id: int, order_id: str, integration_ids: Optional[List[int]] = None) -> Verdict:
     '''
-    Ищет оплату заказа (номер заказа = UUID счёта Екомкассы) во всех подключённых эквайрингах
-    компании, где можно спросить статус по номеру заказа. Первый «оплачен» - платёж подтверждён.
+    Ищет оплату заказа (номер заказа = UUID счёта Екомкассы) в подключённых эквайрингах компании,
+    где можно спросить статус по номеру заказа (только в выбранных, если integration_ids задан).
+    Первый «оплачен» - платёж подтверждён.
     '''
     checked, errors, not_paid = [], [], []
     for slug, (label, checker) in ORDER_CHECKERS.items():
-        for _, name, config in _integrations(cur, company_id, slug):
+        for iid, name, config in _integrations(cur, company_id, slug):
+            if integration_ids is not None and iid not in integration_ids:
+                continue
             verdict, info, err = checker(config, order_id)
             checked.append(f'{label} «{name}»')
             if err:
@@ -117,7 +120,7 @@ def verify_order(cur, company_id: int, order_id: str) -> Verdict:
     if errors:
         return 'unknown', 'Не удалось проверить: ' + '; '.join(errors), {}
     if not checked:
-        return 'unknown', 'Нет эквайринга, где можно проверить заказ по номеру (поддерживаются Т-Банк и Альфа-Банк)', {}
+        return 'unknown', 'Нет выбранного активного эквайринга, где можно проверить заказ по номеру (поддерживаются Т-Банк и Альфа-Банк)', {}
     return 'not_paid', f"Заказ {order_id} не найден: {', '.join(checked)}", {}
 
 

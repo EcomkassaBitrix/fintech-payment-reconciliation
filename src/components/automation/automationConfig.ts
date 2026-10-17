@@ -116,8 +116,8 @@ export const DISCREPANCY_KINDS: { value: DiscrepancyKind; label: string; descrip
   { value: 'pending_invoice', label: 'Висит в ожидании оплаты', description: 'Счёт Екомкассы остаётся «ожидает оплату», хотя деньги могли прийти' }
 ];
 
-// Проверка в банке скрыта до сверки эквайринга по дневной сумме зачисления.
-export const BANK_VERIFY_ENABLED = false;
+// Эквайринги, где можно спросить статус оплаты по номеру заказа.
+export const ORDER_CHECK_PROVIDERS = ['tbank', 'alfabank'];
 export type VerifyMode = 'none' | 'payment_system' | 'bank';
 export const VERIFY_MODES: { value: VerifyMode; label: string; description: string }[] = [
   { value: 'none', label: 'Без проверки', description: 'Чек пробивается сразу, как нашли расхождение' },
