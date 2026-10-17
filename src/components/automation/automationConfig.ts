@@ -113,7 +113,7 @@ export const DEFAULT_DISCREPANCY_DELAY = 60;
 export type DiscrepancyKind = 'missing_receipt' | 'pending_invoice';
 export const DISCREPANCY_KINDS: { value: DiscrepancyKind; label: string; description: string }[] = [
   { value: 'missing_receipt', label: 'Оплачен, но нет чека', description: 'Платёж у нас оплачен, а ни чека кассы, ни чека ОФД нет' },
-  { value: 'pending_invoice', label: 'Висит в ожидании оплаты', description: 'Счёт Екомкассы остаётся «ожидает оплату», хотя деньги могли прийти' }
+  { value: 'pending_invoice', label: 'Висит в ожидании оплаты', description: 'Платеж в Екомкассы остаётся «ожидает оплату», хотя оплата была' }
 ];
 
 // Эквайринги, где можно спросить статус оплаты по номеру заказа.
