@@ -40,7 +40,8 @@ export interface DocCategory {
 }
 
 // Категория -> интеграции -> статусы документов.
-// - Платежи: интернет-эквайринги + счета Екомкассы (INVC), если подключён её платёжный шлюз;
+// - Платежи: интернет-эквайринги + счета Екомкассы (INVC), если подключён её платёжный шлюз
+//   (строка называется как интеграция шлюза, например «Точка»);
 // - Чеки: чеки Екомкассы (VCHR) + чеки ОФД;
 // - Деньги: выписка по расчётным счетам банков;
 // - Заказы: курьерские заказы Екомкассы (CORD).
@@ -97,7 +98,7 @@ export const categoryItems = (category: DocCategory, s: ActiveSources): SourceIt
     if (src.orderType === 'INVC' && s.ecomGateway.length === 0) return [];
     return [{
       key: `${category.id}|${src.kind}`, kind: src.kind,
-      name: src.orderType === 'INVC' ? 'Екомкасса платежи' : list.map((i) => i.name).join(', '),
+      name: (src.orderType === 'INVC' ? s.ecomGateway : list).map((i) => i.name).join(', '),
       orderType: src.orderType, statuses: src.statuses
     }];
   });
