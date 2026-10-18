@@ -546,6 +546,42 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'origin': origin or 'sync'
             })
 
+        # 2б. Счета Екомкассы «ожидает оплату» (загружены через окно дозагрузки) -
+        # не платёж: в «Транзакции» не попадают, нужны только сценарию
+        # «Висит в ожидании оплаты». Показываем в ленте как событие шлюза.
+        if not provider_slug or provider_slug == 'ecomkassa_gateway':
+            pi_where = 'WHERE pi.company_id = %s'
+            pi_params = [company_id]
+            if integration_id:
+                pi_where += ' AND pi.integration_id = %s'
+                pi_params.append(integration_id)
+            cur.execute(f'''
+                SELECT pi.id, pi.invoice_uuid, COALESCE(pi.invoice_updated_at, pi.created_at),
+                       pi.amount, pi.raw_data, ui.integration_name, pi.origin
+                FROM {SCHEMA}.ecomkassa_pending_invoices pi
+                JOIN {SCHEMA}.user_integrations ui ON ui.id = pi.integration_id
+                {pi_where}
+            ''', pi_params)
+            for pi_id, uid, event_at, amount, raw_data, integration_name, origin in cur.fetchall():
+                amount_str = f'{float(amount):.2f} ₽' if amount is not None else ''
+                events.append({
+                    'id': f'pinv_{pi_id}',
+                    'source': 'payment',
+                    'created_at': event_at.isoformat() if event_at else None,
+                    'provider_slug': 'ecomkassa_gateway',
+                    'provider_type': 'Екомкасса — платёжный шлюз',
+                    'transaction_type': 'payment',
+                    'integration_name': integration_name,
+                    'payment_provider': None,
+                    'event_type': 'ecomkassa_pending_invoice',
+                    'status': 'Ожидает оплату',
+                    'error_message': None,
+                    'event_number': str(uid),
+                    'summary': f'Счёт #{uid} · ожидает оплату {amount_str}'.strip(),
+                    'raw': raw_data,
+                    'origin': origin or 'manual'
+                })
+
         # Фильтр по периоду - по календарному дню события в часовом поясе
         # компании (даты в БД хранятся в UTC), оба конца включительно.
         if has_date_filter:

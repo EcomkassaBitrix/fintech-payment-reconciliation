@@ -207,6 +207,8 @@ def _prepare_pending_invoice(cur, job: Dict[str, Any], scenario: Dict[str, Any])
                        WHERE company_id = %s AND order_id = %s AND status = 'done' AND removed_at IS NULL)
     ''', (job['company_id'], uid))
     if cur.fetchone()[0]:
+        cur.execute(f'DELETE FROM {SCHEMA}.ecomkassa_pending_invoices WHERE company_id = %s AND invoice_uuid = %s',
+                    (job['company_id'], uid))
         return 'skipped', info, f'По счёту {uid} в Екомкассе уже есть пробитый чек - коррекция не нужна'
     mapping = scenario.get('field_mapping') or {}
     if mapping.get('verify_mode') == 'none':
@@ -255,6 +257,8 @@ def _prepare_pending_invoice(cur, job: Dict[str, Any], scenario: Dict[str, Any])
           job['id'], job['scenario_id'], str(row_id)))
     if not cur.fetchone():
         return 'skipped', info, f'По платежу счёта {uid} уже есть другое задание сценария'
+    cur.execute(f'DELETE FROM {SCHEMA}.ecomkassa_pending_invoices WHERE company_id = %s AND invoice_uuid = %s',
+                (job['company_id'], uid))
     log(cur, job['id'], 'info', f'{where}: {message}. Платёж отмечен у нас как оплаченный')
     job.update({'source_type': 'payment', 'source_id': str(row_id), 'verified': True,
                 'payload': {**payload, 'reason': 'discrepancy', 'webhook_payment_id': row_id}})

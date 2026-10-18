@@ -49,7 +49,13 @@ export const DOC_CATEGORIES: DocCategory[] = [
     id: 'payments', label: 'Платежи', icon: 'CreditCard',
     sources: [
       { kind: 'acquiring', statuses: [{ id: 'paid', label: 'Оплачено', codes: [] }, { id: 'refunded', label: 'Возврат', codes: [] }] },
-      { kind: 'ecomkassa', orderType: 'INVC', statuses: [{ id: 'paid', label: 'Оплачено', codes: ['PAID', 'COMPLETED'] }] }
+      {
+        kind: 'ecomkassa', orderType: 'INVC', statuses: [
+          { id: 'paid', label: 'Оплачено', codes: ['PAID', 'COMPLETED'] },
+          // Только для сценария «Висит в ожидании оплаты»: не платёж, в транзакции не попадает.
+          { id: 'pending', label: 'Ожидает оплату', codes: ['CREATED', 'WAITING'] }
+        ]
+      }
     ]
   },
   {

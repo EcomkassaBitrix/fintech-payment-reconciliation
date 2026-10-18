@@ -7,7 +7,6 @@ import psycopg2
 from typing import Dict, Any, List
 
 from preparer import prepare, retry_delay, log
-from ecomkassa_client import company_cash_register, _call as ecom_call
 from actions import ACTIONS
 from cron_report import record_cron_run
 from auth_guard import guard, internal_headers
@@ -231,21 +230,20 @@ def enqueue_discrepancies(cur, conn, company_id) -> int:
     '''
     Сценарий «Расхождение». Вид «Оплачен, но нет чека» (по умолчанию): оплаченные платежи компании
     без чека кассы и ОФД, с оплаты которых прошло не меньше delay_minutes (и не больше окна).
-    Вид «Висит в ожидании оплаты»: счета Екомкассы в статусе «ожидает оплату» - см. enqueue_pending_invoices.
+    Вид «Висит в ожидании оплаты»: счета Екомкассы «ожидает оплату», загруженные через окно дозагрузки - см. enqueue_pending_invoices.
     Один платёж - одно задание на сценарий.
     '''
     if not company_id:
         return 0
     cur.execute(f'''
         SELECT id, COALESCE((field_mapping->>'delay_minutes')::int, 60),
-               COALESCE(field_mapping->>'discrepancy_kind', 'missing_receipt'),
-               COALESCE(field_mapping->>'lookback_days', '3')
+               COALESCE(field_mapping->>'discrepancy_kind', 'missing_receipt')
         FROM {SCHEMA}.automation_scenarios
         WHERE company_id = %s AND trigger_type = 'discrepancy' AND status = 'active' AND removed_at IS NULL
     ''', (company_id,))
     rows = cur.fetchall()
-    scenarios = [(sid, d) for sid, d, kind, _ in rows if kind != 'pending_invoice']
-    invoice_scenarios = [(sid, d, lookback_days(lb)) for sid, d, kind, lb in rows if kind == 'pending_invoice']
+    scenarios = [(sid, d) for sid, d, kind in rows if kind != 'pending_invoice']
+    invoice_scenarios = [(sid, d) for sid, d, kind in rows if kind == 'pending_invoice']
     created = 0
     if invoice_scenarios:
         try:
@@ -282,75 +280,36 @@ def enqueue_discrepancies(cur, conn, company_id) -> int:
     return created
 
 
-# Статусы счёта Екомкассы «ожидает оплату» и пауза перед повторной проверкой неоплаченного счёта.
-PENDING_INVOICE_STATUSES = {'CREATED', 'WAITING'}
+# Неоплаченный счёт перепроверяем не чаще раза в INVOICE_RECHECK_HOURS и только пока он свежий:
+# старые брошенные счета - одна проверка.
 INVOICE_RECHECK_HOURS = 6
-# Неоплаченный счёт перепроверяем, только пока он свежий: старые брошенные счета - одна проверка.
 INVOICE_RECHECK_MAX_AGE_DAYS = 3
-INVOICE_SEARCH_PAGES = 10
-# Счета в Екомкассе ищем не чаще раза в INVOICE_SCAN_MINUTES на сценарий (поиск за год - тяжёлый).
-INVOICE_SCAN_MINUTES = 30
-
-
-def lookback_days(value) -> int:
-    '''Период поиска счетов: число дней (1-31) или «этот год» - с 1 января (по Москве).'''
-    if value == 'year':
-        today = (datetime.utcnow() + timedelta(hours=3)).date()
-        return (today - today.replace(month=1, day=1)).days + 1
-    try:
-        return max(1, min(int(value), 31))
-    except (TypeError, ValueError):
-        return 3
 
 
 def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
     '''
-    Счета (INVC) Екомкассы, которые дольше delay_minutes висят в «ожидает оплату» (за lookback_days).
-    Задание на каждый счёт; оплату проверяем в эквайринге по номеру заказа (UUID счёта) уже в задании.
+    Счета Екомкассы «ожидает оплату», загруженные вручную через окно дозагрузки
+    (таблица ecomkassa_pending_invoices), которые висят дольше delay_minutes.
+    Сценарий сам в Екомкассу не ходит. Задание на каждый счёт; оплату проверяем
+    в эквайринге по номеру заказа (UUID счёта) уже в задании.
     Неоплаченный счёт (задание «Пропущен») перепроверяем не чаще раза в INVOICE_RECHECK_HOURS.
     '''
-    ids = [sid for sid, _, _ in scenarios]
     cur.execute(f'''
-        UPDATE {SCHEMA}.automation_scenarios SET last_scan_at = NOW()
-        WHERE id = ANY(%s) AND (last_scan_at IS NULL OR last_scan_at < NOW() - INTERVAL '{INVOICE_SCAN_MINUTES} minutes')
-        RETURNING id
-    ''', (ids,))
-    due = {r[0] for r in cur.fetchall()}
-    conn.commit()
-    scenarios = [x for x in scenarios if x[0] in due]
-    if not scenarios:
+        SELECT invoice_uuid, external_id, amount, invoice_updated_at
+        FROM {SCHEMA}.ecomkassa_pending_invoices WHERE company_id = %s
+    ''', (company_id,))
+    pending = cur.fetchall()
+    if not pending:
         return 0
-    kassa = company_cash_register(cur, company_id)
-    if not kassa:
-        return 0
-    lookback = max(lb for _, _, lb in scenarios)
-    since = (datetime.utcnow() - timedelta(days=lookback)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    items = []
-    for page in range(INVOICE_SEARCH_PAGES):
-        status, data = ecom_call(kassa, 'POST', '/api/mobile/v1/orders/search',
-                                 {'since': since, 'orderTypes': ['INVC'], 'offset': page * 500, 'limit': 500})
-        batch = (data or {}).get('result') if status == 200 and isinstance(data, dict) else None
-        if not isinstance(batch, list):
-            print(f'ecomkassa search failed: {status} {str(data)[:200]}')
-            break
-        items += batch
-        if len(batch) < 500:
-            break
-    pending = [i for i in items if i.get('orderId') and str(i.get('status')) in PENDING_INVOICE_STATUSES]
     now_utc = datetime.utcnow()
     created = 0
-    for scenario_id, delay, lb in scenarios:
-        border = now_utc - timedelta(days=lb)
-        for item in pending:
-            try:
-                updated = datetime.fromisoformat(str(item.get('updated')).replace('Z', '+00:00')).replace(tzinfo=None)
-            except (TypeError, ValueError):
-                updated = None
-            if updated and (updated > now_utc - timedelta(minutes=delay) or updated < border):
+    for scenario_id, delay in scenarios:
+        for uid, external_id, amount, updated in pending:
+            if updated and updated > now_utc - timedelta(minutes=delay):
                 continue
-            uid = str(item['orderId'])
-            payload = {'reason': 'pending_invoice', 'invoice_uuid': uid, 'amount': item.get('total'),
-                       'external_id': item.get('externalId'), 'updated': item.get('updated')}
+            payload = {'reason': 'pending_invoice', 'invoice_uuid': uid,
+                       'amount': float(amount) if amount is not None else None,
+                       'external_id': external_id, 'updated': updated.isoformat() + 'Z' if updated else None}
             cur.execute(f'''
                 SELECT id, status, updated_at < NOW() - INTERVAL '{INVOICE_RECHECK_HOURS} hours'
                 FROM {SCHEMA}.automation_jobs WHERE scenario_id = %s AND payload->>'invoice_uuid' = %s
@@ -378,7 +337,7 @@ def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
             if row:
                 created += 1
                 log(cur, row[0], 'info',
-                    f"Расхождение: счёт Екомкассы {uid} на {float(item.get('total') or 0):.2f} ₽ "
+                    f"Расхождение: счёт Екомкассы {uid} на {float(amount or 0):.2f} ₽ "
                     f"висит в «ожидает оплату» - проверим оплату в эквайринге")
     conn.commit()
     return created

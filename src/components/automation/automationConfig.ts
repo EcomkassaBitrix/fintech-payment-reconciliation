@@ -125,15 +125,6 @@ export const VERIFY_MODES: { value: VerifyMode; label: string; description: stri
   { value: 'bank', label: 'Проверка в банке', description: 'Ищем поступление с номером платежа в выписке расчётного счёта' }
 ];
 
-export const LOOKBACK_OPTIONS: { value: number | 'year'; label: string }[] = [
-  { value: 1, label: '1 день' },
-  { value: 3, label: '3 дня' },
-  { value: 7, label: '7 дней' },
-  { value: 14, label: '14 дней' },
-  { value: 31, label: '31 день' },
-  { value: 'year', label: 'этот год' }
-];
-
 // Сопоставление полей CRM для сценария «Заказ в CRM» (хранится в field_mapping сценария).
 // Ссылка на поле - «объект.КОД»: deal.OPPORTUNITY, contact.EMAIL, company.UF_CRM_123.
 export type CrmEntity = 'deal' | 'lead';

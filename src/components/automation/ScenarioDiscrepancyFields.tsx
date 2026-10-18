@@ -7,7 +7,6 @@ import {
   DISCREPANCY_DELAY_OPTIONS,
   DISCREPANCY_KINDS,
   DiscrepancyKind,
-  LOOKBACK_OPTIONS,
   IntegrationOption,
   ORDER_CHECK_PROVIDERS
 } from './automationConfig';
@@ -28,7 +27,6 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep, paymentSystem
     onChange(next.length ? { verify_mode: 'payment_system', verify_integration_ids: next } : { verify_mode: 'none', verify_integration_ids: [] });
   };
   const delay = Number(mapping.delay_minutes) || DEFAULT_DISCREPANCY_DELAY;
-  const lookback = mapping.lookback_days === 'year' ? 'year' : Number(mapping.lookback_days) || 3;
   const isInvoice = kind === 'pending_invoice';
 
   return (
@@ -38,11 +36,7 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep, paymentSystem
           options={DISCREPANCY_KINDS}
           value={kind}
           onSelect={(v) =>
-            onChange(
-              v === 'pending_invoice'
-                ? { discrepancy_kind: v, verify_mode: 'none', verify_integration_ids: [], lookback_days: lookback }
-                : { discrepancy_kind: v, verify_mode: 'none', verify_integration_ids: [] }
-            )
+            onChange({ discrepancy_kind: v, verify_mode: 'none', verify_integration_ids: [] })
           }
         />
       </ScenarioStep>
@@ -61,23 +55,10 @@ const ScenarioDiscrepancyFields = ({ mapping, onChange, startStep, paymentSystem
           </SelectContent>
         </Select>
         {isInvoice ? (
-          <div className="space-y-2">
-            <Select value={String(lookback)} onValueChange={(v) => onChange({ lookback_days: v === 'year' ? 'year' : Number(v) })}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {LOOKBACK_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={String(o.value)}>
-                    {o.value === 'year' ? 'Смотреть счета за этот год' : `Смотреть счета за ${o.label}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Берём счета Екомкассы в статусе «ожидает оплату» за выбранный период. Неоплаченные счета за последние 3 дня перепроверяем раз в 6 часов, более старые — проверяем один раз.
-            </p>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            Берём счета Екомкассы «ожидает оплату», загруженные вручную в «Событиях» (кнопка «Загрузить» → Платежи →
+            Ожидает оплату). Неоплаченные счета за последние 3 дня перепроверяем раз в 6 часов, более старые — проверяем один раз.
+          </p>
         ) : (
           <p className="text-xs text-muted-foreground">
             Проверяются оплаченные платежи всех платёжек компании. Если за это время не пришёл ни чек кассы, ни чек ОФД —

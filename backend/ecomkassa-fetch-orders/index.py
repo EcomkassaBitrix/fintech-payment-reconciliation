@@ -1,7 +1,7 @@
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
@@ -239,6 +239,48 @@ def save_receipt(cur, integration_id: int, company_id: int, order_id: Any,
 
 
 PAID_ORDER_STATUSES = {'PAID', 'COMPLETED'}
+# Счёт «ожидает оплату»: храним отдельно (ecomkassa_pending_invoices) - это не платёж,
+# в транзакции он не попадает, report()/корзину/чек по нему не запрашиваем.
+PENDING_INVOICE_STATUSES = {'CREATED', 'WAITING'}
+
+
+def is_pending_invoice(item: Dict[str, Any]) -> bool:
+    return item.get('orderType') == 'INVC' and item.get('status') in PENDING_INVOICE_STATUSES
+
+
+def save_pending_invoice(cur, integration_id: int, company_id: int, item: Dict[str, Any]) -> bool:
+    '''Счёт «ожидает оплату» - только для сценария «Висит в ожидании оплаты». Returns: новый ли.'''
+    uid = str(item.get('orderId') or '')
+    if not uid:
+        return False
+    try:
+        updated = datetime.fromisoformat(str(item.get('updated')).replace('Z', '+00:00'))
+        updated = updated.astimezone(timezone.utc).replace(tzinfo=None) if updated.tzinfo else updated
+    except (TypeError, ValueError):
+        updated = None
+    try:
+        amount = float(item.get('total')) if item.get('total') is not None else None
+    except (TypeError, ValueError):
+        amount = None
+    cur.execute(f'''
+        INSERT INTO {SCHEMA}.ecomkassa_pending_invoices
+            (company_id, integration_id, invoice_uuid, external_id, status, amount, invoice_updated_at, raw_data, origin)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (integration_id, invoice_uuid) DO UPDATE SET
+            status = EXCLUDED.status, amount = EXCLUDED.amount, invoice_updated_at = EXCLUDED.invoice_updated_at,
+            raw_data = EXCLUDED.raw_data, external_id = EXCLUDED.external_id, updated_at = NOW()
+        RETURNING (xmax = 0)
+    ''', (company_id, integration_id, uid, (str(item.get('externalId'))[:255] if item.get('externalId') else None),
+          str(item.get('status')), amount, updated, json.dumps(item, ensure_ascii=False, default=str), ORIGIN))
+    row = cur.fetchone()
+    return bool(row and row[0])
+
+
+def drop_pending_invoice(cur, company_id: int, order_id: Any) -> None:
+    '''Счёт оплачен/пробит - из «ожидает оплату» убираем.'''
+    if order_id:
+        cur.execute(f'DELETE FROM {SCHEMA}.ecomkassa_pending_invoices WHERE company_id = %s AND invoice_uuid = %s',
+                    (company_id, str(order_id)))
 
 
 def is_invoice_paid(item: Dict[str, Any], report_data: Dict[str, Any]) -> bool:
@@ -494,6 +536,13 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         skipped = 0
         payments_saved = 0
 
+        pending_batch = [i for i in batch if is_pending_invoice(i)]
+        for item in pending_batch:
+            if save_pending_invoice(cur, integration_id, company_id, item):
+                inserted += 1
+        pending_ids = {id(i) for i in pending_batch}
+        report_batch = [i for i in batch if id(i) not in pending_ids]
+
         # report() для счетов (INVC) у Екомкассы заметно медленнее, чем для
         # чеков (VCHR) - при последовательных запросах пачка из batch_size
         # документов легко превышала таймаут функции, и фронтенд получал 504
@@ -501,13 +550,13 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # обработаться. Запрашиваем report() параллельно - это сетевой I/O,
         # GIL не мешает, а сама БД-запись (save_receipt) остаётся
         # последовательной, т.к. курсор psycopg2 не потокобезопасен.
-        with ThreadPoolExecutor(max_workers=min(8, len(batch)) or 1) as pool:
+        with ThreadPoolExecutor(max_workers=min(8, len(report_batch)) or 1) as pool:
             reports = list(pool.map(
                 lambda item: fetch_report(token, store_id, item.get('orderId'), protocol_version),
-                batch
+                report_batch
             ))
 
-        for item, report_data in zip(batch, reports):
+        for item, report_data in zip(report_batch, reports):
             order_id = item.get('orderId')
             external_id = item.get('externalId')
             order_type = item.get('orderType')
@@ -528,6 +577,8 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Оплаченный счёт (INVC) загружаем как платёж сразу, даже если касса ещё
             # не пробила чек - чек привяжется следующим тиком, когда станет done.
             invoice_paid = is_invoice_paid(item, report_data)
+            if invoice_paid or receipt_id:
+                drop_pending_invoice(cur, company_id, order_id)
             if invoice_paid or (receipt_id and report_data.get('invoice_payload')):
                 if total_sum is None:
                     total_sum = invoice_amount(item, report_data)
