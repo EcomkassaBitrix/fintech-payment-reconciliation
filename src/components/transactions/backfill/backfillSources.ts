@@ -96,7 +96,8 @@ export const categoryItems = (category: DocCategory, s: ActiveSources): SourceIt
     if (list.length === 0) return [];
     if (src.orderType === 'INVC' && s.ecomGateway.length === 0) return [];
     return [{
-      key: `${category.id}|${src.kind}`, kind: src.kind, name: list.map((i) => i.name).join(', '),
+      key: `${category.id}|${src.kind}`, kind: src.kind,
+      name: src.orderType === 'INVC' ? 'Екомкасса платежи' : list.map((i) => i.name).join(', '),
       orderType: src.orderType, statuses: src.statuses
     }];
   });
