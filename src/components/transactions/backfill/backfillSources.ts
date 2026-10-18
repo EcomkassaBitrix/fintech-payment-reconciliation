@@ -87,7 +87,7 @@ export const categoryItems = (category: DocCategory, s: ActiveSources): SourceIt
     }
     const list = src.kind === 'ofd' ? s.ofd : s.ecomkassa;
     if (list.length === 0) return [];
-    if (src.orderType === 'INVC' && s.ecomGateway.length === 0) return [];
+    if ((src.orderType === 'INVC' || src.orderType === 'VCHR') && s.ecomGateway.length === 0) return [];
     return [{
       key: `${category.id}|${src.kind}`, kind: src.kind, name: list.map((i) => i.name).join(', '),
       orderType: src.orderType, statuses: src.statuses
