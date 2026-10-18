@@ -64,7 +64,7 @@ const AdminCompaniesSection = () => {
   const [changingId, setChangingId] = useState<number | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const { toast } = useToast();
-  const tariffsApi = (functionUrls as Record<string, string>)['admin-tariffs'];
+  const tariffsApi = (functionUrls as Record<string, string>)['tariffs-list'];
 
   useEffect(() => {
     if (!user) return;

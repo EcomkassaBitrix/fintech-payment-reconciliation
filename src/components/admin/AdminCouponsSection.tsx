@@ -12,7 +12,7 @@ import { promoLink } from '@/lib/pendingPromo';
 import CouponDialog, { Coupon, CouponTariff } from './CouponDialog';
 import { couponPeriodLabel, randomCode } from '@/lib/couponPeriod';
 
-const api = (functionUrls as Record<string, string>)['admin-tariffs'];
+const api = (functionUrls as Record<string, string>)['tariffs-list'];
 
 interface Activation {
   id: number;

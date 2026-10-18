@@ -1,12 +1,61 @@
 {
   "tests": [
     {
-      "name": "Get active tariffs",
+      "name": "Get active tariffs (tariffs-list, GET)",
       "method": "GET",
       "path": "/",
       "expectedStatus": 200,
       "expectedBody": {
         "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (admin-tariffs, GET)",
+      "method": "GET",
+      "path": "/?requester_user_id=1",
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (admin-tariffs, GET)",
+      "method": "GET",
+      "path": "/?requester_user_id=1",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Купоны без входа закрыты",
+      "method": "GET",
+      "path": "/?view=coupons",
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Смена тарифа компании без входа закрыта",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "set_company_tariff",
+        "requester_user_id": 1,
+        "company_id": 1,
+        "tariff_id": 1
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
       },
       "bodyMatcher": "partial"
     }

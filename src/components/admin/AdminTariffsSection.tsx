@@ -12,7 +12,7 @@ import { TARIFF_MODULES } from '@/config/modules';
 import functionUrls from '../../../backend/func2url.json';
 import { discountedYearPrice, fullYearPrice } from '@/lib/tariffPricing';
 
-const api = (functionUrls as Record<string, string>)['admin-tariffs'];
+const api = (functionUrls as Record<string, string>)['tariffs-list'];
 
 interface Tariff {
   id: number;
