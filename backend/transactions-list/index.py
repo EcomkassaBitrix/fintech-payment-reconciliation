@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import psycopg2
 from typing import Dict, Any, Optional, Tuple
@@ -143,6 +144,33 @@ def compute_signed_amount(row: Dict[str, Any]) -> float:
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    '''
+    Точка входа: при временной перегрузке базы («rate limit exceeded», обрыв соединения)
+    запрос повторяется с короткой паузой - при открытии страницы кабинет шлёт много
+    запросов разом, и единичный отказ базы не должен превращаться в ошибку на экране.
+    '''
+    resp = None
+    for attempt in range(3):
+        try:
+            resp = _handle(event, context)
+        except psycopg2.OperationalError as e:
+            print(f'[transactions-list] db connect failed (attempt {attempt + 1}): {e}')
+            if attempt == 2:
+                raise
+            time.sleep(0.4 * (attempt + 1))
+            continue
+        if resp.get('statusCode') != 500:
+            return resp
+        error = str(json.loads(resp.get('body') or '{}').get('error') or '')
+        print(f'[transactions-list] error (attempt {attempt + 1}): {error[:300]}')
+        transient = any(k in error.lower() for k in ('rate limit', 'connection', 'server closed', 'timeout', 'canceling statement'))
+        if not transient or attempt == 2:
+            return resp
+        time.sleep(0.4 * (attempt + 1))
+    return resp
+
+
+def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Единый реестр готовых для сверки транзакций: объединяет уже насыщенные
     данные из платежей (webhook_payments), чеков и заказов кассы
