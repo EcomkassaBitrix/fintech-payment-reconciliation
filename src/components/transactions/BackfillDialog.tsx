@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DateRange } from 'react-day-picker';
 import {
   Dialog,
@@ -19,13 +19,11 @@ import BackfillDocTypes from './backfill/BackfillDocTypes';
 import BackfillProgress from './backfill/BackfillProgress';
 import {
   ActiveSources,
-  BACKFILL_STATUSES,
-  DOC_TYPES,
-  DocType,
   NamedIntegration,
-  ecomkassaOrderTypes,
+  Selection,
+  buildPlan,
   fetchActiveSources,
-  isDocTypeAvailable,
+  fullSelection,
 } from './backfill/backfillSources';
 
 interface BackfillDialogProps {
@@ -60,16 +58,34 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
   const [dateRange, setDateRange] = useState<DateRange>({ from: monthAgo(), to: endOfToday() });
   const dateFrom = dateRange.from ?? monthAgo();
   const dateTo = dateRange.to ?? dateFrom;
-  const [docTypes, setDocTypes] = useState<DocType[]>(DOC_TYPES.map((t) => t.id));
+  const [selection, setSelection] = useState<Selection>({});
   const [isChecking, setIsChecking] = useState(false);
 
   const sources: ActiveSources = { ecomkassa: ecomkassaIntegrations, ofd: ofdIntegrations, bank: bankIntegrations };
   const hasAnySource = sources.ecomkassa.length > 0 || sources.ofd.length > 0 || sources.bank.length > 0;
-  const selectedAvailable = docTypes.filter((t) => isDocTypeAvailable(t, sources));
+  const plan = buildPlan(selection, sources);
+  const hasSelection = Object.keys(plan.typeStatuses).length > 0 || plan.hasOfd || plan.bankIds.length > 0;
   const isRunning = phase === 'running';
 
-  const toggleDocType = (id: DocType) => {
-    setDocTypes((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+  // Новые подключённые интеграции по умолчанию выбраны целиком; выбор,
+  // который пользователь уже поменял, не трогаем.
+  const seenKeys = useRef<Set<string>>(new Set());
+  const sourcesKey = JSON.stringify(sources);
+  useEffect(() => {
+    const full = fullSelection(sources);
+    const fresh = Object.keys(full).filter((k) => !seenKeys.current.has(k));
+    if (fresh.length === 0) return;
+    fresh.forEach((k) => seenKeys.current.add(k));
+    setSelection((prev) => {
+      const next = { ...prev };
+      fresh.forEach((k) => { next[k] = full[k]; });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourcesKey]);
+
+  const changeSelection = (key: string, statusIds: string[]) => {
+    setSelection((prev) => ({ ...prev, [key]: statusIds }));
   };
 
   const handleStart = async () => {
@@ -85,10 +101,12 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
     }
     setIsChecking(false);
 
-    const orderTypes = ecomkassaOrderTypes(docTypes);
+    const freshPlan = buildPlan(selection, fresh);
+    const orderTypes = Object.keys(freshPlan.typeStatuses);
     const useEcomkassa = fresh.ecomkassa.length > 0 && orderTypes.length > 0;
-    const useOfd = fresh.ofd.length > 0 && docTypes.includes('receipts');
-    const banks = docTypes.includes('money') ? fresh.bank : [];
+    const useOfd = freshPlan.hasOfd;
+    const banks = fresh.bank.filter((b) => freshPlan.bankIds.includes(b.id));
+    const allStatuses = Array.from(new Set(Object.values(freshPlan.typeStatuses).flat()));
 
     if (!useEcomkassa && !useOfd && banks.length === 0) {
       toast({
@@ -110,7 +128,8 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
       dateTo: to,
       hasEcomkassa: useEcomkassa,
       orderTypes,
-      statuses: BACKFILL_STATUSES,
+      statuses: allStatuses,
+      typeStatuses: freshPlan.typeStatuses,
       hasOfd: useOfd,
       bankIntegrations: banks,
       ecomkassaNames: fresh.ecomkassa.map((i) => i.name),
@@ -162,7 +181,7 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
 
             <Separator />
 
-            <BackfillDocTypes selected={docTypes} sources={sources} disabled={isRunning} onToggle={toggleDocType} />
+            <BackfillDocTypes selection={selection} sources={sources} disabled={isRunning} onChange={changeSelection} />
 
             {phase !== 'idle' && (
               <>
@@ -192,7 +211,7 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
           ) : (
             <Button
               onClick={handleStart}
-              disabled={!hasAnySource || selectedAvailable.length === 0 || isChecking}
+              disabled={!hasAnySource || !hasSelection || isChecking}
               className="w-full gap-2"
             >
               <Icon name={isChecking ? 'Loader2' : 'Download'} size={16} className={isChecking ? 'animate-spin' : ''} />

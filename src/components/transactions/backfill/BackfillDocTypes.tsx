@@ -1,49 +1,90 @@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
-import { ActiveSources, DOC_TYPES, DocType, isDocTypeAvailable, sourcesHint } from './backfillSources';
+import { ActiveSources, DOC_CATEGORIES, Selection, SourceItem, categoryItems } from './backfillSources';
 
 interface BackfillDocTypesProps {
-  selected: DocType[];
+  selection: Selection;
   sources: ActiveSources;
   disabled: boolean;
-  onToggle: (type: DocType) => void;
+  onChange: (key: string, statusIds: string[]) => void;
 }
 
-const BackfillDocTypes = ({ selected, sources, disabled, onToggle }: BackfillDocTypesProps) => {
+const IntegrationRow = ({ item, chosen, disabled, onChange }: {
+  item: SourceItem;
+  chosen: string[];
+  disabled: boolean;
+  onChange: (key: string, statusIds: string[]) => void;
+}) => {
+  const all = item.statuses.length > 0 && item.statuses.every((st) => chosen.includes(st.id));
+  const some = chosen.length > 0;
+  const id = `bf-${item.key}`;
+
   return (
-    <div className="space-y-3">
-      <Label className="text-sm font-medium">Документы</Label>
-      <div className="grid grid-cols-2 gap-3">
-        {DOC_TYPES.map((t) => {
-          const available = isDocTypeAvailable(t.id, sources);
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id={id}
+          checked={all ? true : some ? 'indeterminate' : false}
+          onCheckedChange={() => onChange(item.key, all ? [] : item.statuses.map((st) => st.id))}
+          disabled={disabled}
+        />
+        <Label htmlFor={id} className="text-sm font-normal cursor-pointer">{item.name}</Label>
+      </div>
+      <div className="pl-6 space-y-1.5">
+        {item.statuses.map((st) => {
+          const stId = `${id}-${st.id}`;
+          const checked = chosen.includes(st.id);
           return (
-            <div key={t.id} className="flex items-start gap-2">
+            <div key={st.id} className="flex items-center gap-2">
               <Checkbox
-                id={`doc-${t.id}`}
-                checked={available && selected.includes(t.id)}
-                onCheckedChange={() => onToggle(t.id)}
-                disabled={disabled || !available}
-                className="mt-0.5"
+                id={stId}
+                checked={checked}
+                onCheckedChange={() =>
+                  onChange(item.key, checked ? chosen.filter((c) => c !== st.id) : [...chosen, st.id])
+                }
+                disabled={disabled}
               />
-              <Label
-                htmlFor={`doc-${t.id}`}
-                className={`text-sm font-normal ${available ? 'cursor-pointer' : 'text-muted-foreground'}`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <Icon name={t.icon} size={13} />
-                  {t.label}
-                </span>
-                <span className="block text-xs text-muted-foreground mt-0.5">{sourcesHint(t.id, sources)}</span>
+              <Label htmlFor={stId} className="text-xs font-normal text-muted-foreground cursor-pointer">
+                {st.label}
               </Label>
             </div>
           );
         })}
       </div>
-      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-        <Icon name="CheckCircle2" size={12} />
-        Загружаются только документы в статусе «Завершено»
-      </p>
+    </div>
+  );
+};
+
+const BackfillDocTypes = ({ selection, sources, disabled, onChange }: BackfillDocTypesProps) => {
+  const categories = DOC_CATEGORIES
+    .map((c) => ({ category: c, items: categoryItems(c, sources) }))
+    .filter((c) => c.items.length > 0);
+
+  return (
+    <div className="space-y-3">
+      <Label className="text-sm font-medium">Документы</Label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {categories.map(({ category, items }) => (
+          <div key={category.id} className="space-y-2">
+            <div className="flex items-center gap-1.5 text-sm font-medium">
+              <Icon name={category.icon} size={14} />
+              {category.label}
+            </div>
+            <div className="space-y-2">
+              {items.map((item) => (
+                <IntegrationRow
+                  key={item.key}
+                  item={item}
+                  chosen={selection[item.key] || []}
+                  disabled={disabled}
+                  onChange={onChange}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

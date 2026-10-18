@@ -308,7 +308,7 @@ def save_synthetic_payment(cur, gateway_integration_id: int, company_id: int, or
 
 def collect_candidates(token: str, since: Optional[str], until: Optional[str],
                         order_types: List[str], statuses: List[str],
-                        need_count: int) -> tuple:
+                        need_count: int, type_statuses: Optional[Dict[str, List[str]]] = None) -> tuple:
     '''
     Проходит страницы /orders/search (по 500 записей), фильтрует локально по
     статусу (API фильтрует только по типу документа и дате) и копит подходящих
@@ -335,7 +335,8 @@ def collect_candidates(token: str, since: Optional[str], until: Optional[str],
             break
 
         for item in page_items:
-            if item.get('status') in statuses:
+            allowed = (type_statuses or {}).get(item.get('orderType')) or statuses
+            if item.get('status') in allowed:
                 candidates.append(item)
 
         if len(page_items) < 500:
@@ -382,7 +383,8 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     done=false.
     Args: company_id (обязателен), date_from, date_to (ISO, обязательны),
     order_types (['VCHR','INVC','CORD'], default ['VCHR']),
-    statuses (default ['COMPLETED']), offset (default 0), batch_size (default 8, max 30)
+    statuses (default ['COMPLETED']), type_statuses ({'INVC': ['PAID', ...]} - статусы
+    отдельно по типу документа, перекрывают statuses), offset (default 0), batch_size (default 8, max 30)
     Returns: matched_total, processed, inserted, skipped, next_offset, done, capped
     '''
 
@@ -419,6 +421,10 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     order_types = [t for t in order_types if t in ALLOWED_ORDER_TYPES] or ['VCHR']
     statuses = [s for s in statuses if s in ALLOWED_STATUSES] or ['COMPLETED']
+    raw_type_statuses = body.get('type_statuses') if isinstance(body.get('type_statuses'), dict) else {}
+    type_statuses = {t: [s for s in (v or []) if s in ALLOWED_STATUSES]
+                     for t, v in raw_type_statuses.items() if t in ALLOWED_ORDER_TYPES}
+    type_statuses = {t: v for t, v in type_statuses.items() if v}
 
     dsn = os.environ['DATABASE_URL']
     conn = psycopg2.connect(dsn)
@@ -459,7 +465,8 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return response(400, {'error': 'Некорректный формат date_from/date_to'})
 
         candidates, matched_total, capped, error = collect_candidates(
-            token, since, until, order_types, statuses, need_count=offset + batch_size
+            token, since, until, order_types, statuses, need_count=offset + batch_size,
+            type_statuses=type_statuses
         )
 
         if error:

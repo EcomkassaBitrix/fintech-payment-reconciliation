@@ -26,6 +26,7 @@ interface StartConfig {
   hasEcomkassa: boolean;
   orderTypes: string[];
   statuses: string[];
+  typeStatuses?: Record<string, string[]>;
   hasOfd: boolean;
   bankIntegrations: BankIntegration[];
   ecomkassaNames?: string[];
@@ -78,7 +79,8 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
   const runningRef = useRef(false);
 
   const runEcomkassaBackfill = useCallback(async (
-    companyIdArg: number, from: Date, to: Date, orderTypes: string[], statuses: string[]
+    companyIdArg: number, from: Date, to: Date, orderTypes: string[], statuses: string[],
+    typeStatuses?: Record<string, string[]>
   ) => {
     let offset = 0;
     let done = false;
@@ -105,6 +107,7 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
               date_to: to.toISOString(),
               order_types: orderTypes,
               statuses,
+              type_statuses: typeStatuses,
               offset,
               batch_size: 8
             })
@@ -237,7 +240,7 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
 
     const tasks: Promise<void>[] = [];
     if (config.hasEcomkassa) {
-      tasks.push(runEcomkassaBackfill(config.companyId, config.dateFrom, config.dateTo, config.orderTypes, config.statuses));
+      tasks.push(runEcomkassaBackfill(config.companyId, config.dateFrom, config.dateTo, config.orderTypes, config.statuses, config.typeStatuses));
     }
     if (config.hasOfd) {
       tasks.push(runOfdBackfill(config.companyId, config.dateFrom, config.dateTo));
