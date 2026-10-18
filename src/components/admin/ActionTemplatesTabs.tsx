@@ -26,6 +26,22 @@ const FFD_GROUPS = [
   { value: 'v5', label: 'ФФД 1.2', hint: 'протокол v5' }
 ];
 
+const OPERATION_GROUPS = [
+  { value: 'sale', label: 'Продажа', icon: 'ShoppingCart' },
+  { value: 'prepayment', label: 'Предоплата', icon: 'Wallet' },
+  { value: 'offset', label: 'Зачёт аванса', icon: 'ArrowLeftRight' },
+  { value: 'refund', label: 'Возврат', icon: 'Undo2' }
+];
+
+// По полям шаблона, а не по названию: возврат - операция «возврат прихода»,
+// зачёт аванса - оплата зачётом аванса, предоплата - признак способа расчёта.
+const operationOf = (t: ActionTemplateRow) => {
+  if (t.operation === 'sell_refund') return 'refund';
+  if (Number(t.payment_type) === 2) return 'offset';
+  if (['full_prepayment', 'prepayment', 'advance'].includes(t.payment_method || '')) return 'prepayment';
+  return 'sale';
+};
+
 const categoryOf = (t: ActionTemplateRow): Category => {
   if (t.action_type === 'create_order') return 'order';
   if (t.receipt_type === 'agent') return 'agent';
@@ -101,7 +117,22 @@ const ActionTemplatesTabs = ({ templates, onEdit, onCopy, onDelete }: Props) => 
                           {g.label}
                           <span className="font-normal normal-case">· {g.hint} · {part.length}</span>
                         </div>
-                        {grid(part)}
+                        {c.value !== 'regular'
+                          ? grid(part)
+                          : OPERATION_GROUPS.map((o) => {
+                              const ops = part.filter((t) => operationOf(t) === o.value);
+                              if (ops.length === 0) return null;
+                              return (
+                                <div key={o.value} className="mb-5 border-l-2 border-primary/20 pl-4">
+                                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                                    <Icon name={o.icon} size={15} className="text-muted-foreground" fallback="Receipt" />
+                                    {o.label}
+                                    <span className="text-xs font-normal text-muted-foreground">· {ops.length}</span>
+                                  </div>
+                                  {grid(ops)}
+                                </div>
+                              );
+                            })}
                       </div>
                     );
                   })}
