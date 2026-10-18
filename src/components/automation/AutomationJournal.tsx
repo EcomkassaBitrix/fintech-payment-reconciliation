@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +19,9 @@ interface HistoryItem {
 interface AutomationJournalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  scenarioId?: number | null;
+  onScenarioChange?: (id: number | null) => void;
+  scenarios?: { id: number; name: string }[];
 }
 
 const SOURCE_LABELS: Record<string, string> = { payment: 'Платёж', crm_deal: 'Сделка CRM', crm_lead: 'Лид Битрикс24', ecom_invoice: 'Счёт Екомкассы' };
@@ -60,7 +64,7 @@ const Message = ({ text }: { text: string }) => (
   </>
 );
 
-const AutomationJournal = ({ open, onOpenChange }: AutomationJournalProps) => {
+const AutomationJournal = ({ open, onOpenChange, scenarioId = null, onScenarioChange, scenarios = [] }: AutomationJournalProps) => {
   const { currentCompany } = useAuth();
   const { toast } = useToast();
   const timezone = currentCompany?.timezone || DEFAULT_TIMEZONE;
@@ -77,13 +81,21 @@ const AutomationJournal = ({ open, onOpenChange }: AutomationJournalProps) => {
     try {
       const params = new URLSearchParams({ company_id: String(currentCompany.id), limit: '200' });
       if (filter) params.set('status', filter);
+      if (scenarioId) params.set('scenario_id', String(scenarioId));
       const res = await fetch(`${functionUrls['automation-jobs']}?${params}`);
       const data = await res.json();
       if (res.ok) setJobs(data.jobs || []);
     } finally {
       setIsLoading(false);
     }
-  }, [currentCompany, filter]);
+  }, [currentCompany, filter, scenarioId]);
+
+  useEffect(() => {
+    if (open) {
+      setFilter('');
+      setExpanded(null);
+    }
+  }, [open, scenarioId]);
 
   useEffect(() => {
     if (open) load();
@@ -129,7 +141,26 @@ const AutomationJournal = ({ open, onOpenChange }: AutomationJournalProps) => {
           <SheetDescription>Задания сценариев: что пришло, что собрано, где ошибка</SheetDescription>
         </SheetHeader>
 
-        <div className="mt-4 flex items-center gap-2">
+        {scenarios.length > 0 && (
+          <div className="mt-4">
+            <Select
+              value={scenarioId ? String(scenarioId) : 'all'}
+              onValueChange={(v) => onScenarioChange?.(v === 'all' ? null : Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Все сценарии" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все сценарии</SelectItem>
+                {scenarios.map((sc) => (
+                  <SelectItem key={sc.id} value={String(sc.id)}>{sc.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center gap-2">
           <div className="-mx-1 flex min-w-0 flex-1 gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden">
             {FILTERS.map((f) => (
               <Button

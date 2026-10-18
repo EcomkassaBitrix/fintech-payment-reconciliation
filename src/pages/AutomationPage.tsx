@@ -56,6 +56,11 @@ const AutomationPage = ({ prefillSourceId, onPrefillUsed }: AutomationPageProps 
   const [toCopy, setToCopy] = useState<Scenario | null>(null);
   const [isCopying, setIsCopying] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
+  const [journalScenarioId, setJournalScenarioId] = useState<number | null>(null);
+  const openJournal = (scenarioId: number | null) => {
+    setJournalScenarioId(scenarioId);
+    setJournalOpen(true);
+  };
   const [failedJobs, setFailedJobs] = useState(0);
 
   const api = functionUrls['automation-scenarios'];
@@ -247,7 +252,7 @@ const AutomationPage = ({ prefillSourceId, onPrefillUsed }: AutomationPageProps 
           <p className="text-sm text-muted-foreground sm:text-base">Сценарии: событие в интеграции — документ в кассе</p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-          <Button variant="outline" className="gap-2" onClick={() => setJournalOpen(true)}>
+          <Button variant="outline" className="gap-2" onClick={() => openJournal(null)}>
             <Icon name="ScrollText" size={16} />
             Журнал
             {failedJobs > 0 && (
@@ -320,8 +325,15 @@ const AutomationPage = ({ prefillSourceId, onPrefillUsed }: AutomationPageProps 
                       </span>
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
-                      Заданий: {s.jobs_total}
-                      {s.jobs_errors > 0 && <span className="text-warning"> · с ошибкой: {s.jobs_errors}</span>}
+                      <button
+                        type="button"
+                        className="underline-offset-2 hover:text-foreground hover:underline"
+                        title="Открыть журнал этого сценария"
+                        onClick={() => openJournal(s.id)}
+                      >
+                        Заданий: {s.jobs_total}
+                        {s.jobs_errors > 0 && <span className="text-warning"> · с ошибкой: {s.jobs_errors}</span>}
+                      </button>
                     </div>
                   </div>
                   <div className="-mb-1 -mr-1 flex w-full items-center justify-end gap-1 border-t border-border pt-1 sm:m-0 sm:w-auto sm:border-0 sm:pt-0">
@@ -353,7 +365,13 @@ const AutomationPage = ({ prefillSourceId, onPrefillUsed }: AutomationPageProps 
         onSave={handleSave}
       />
 
-      <AutomationJournal open={journalOpen} onOpenChange={setJournalOpen} />
+      <AutomationJournal
+        open={journalOpen}
+        onOpenChange={setJournalOpen}
+        scenarioId={journalScenarioId}
+        onScenarioChange={setJournalScenarioId}
+        scenarios={scenarios.map((sc) => ({ id: sc.id, name: sc.name }))}
+      />
 
       <CopyScenarioDialog
         scenario={toCopy}
