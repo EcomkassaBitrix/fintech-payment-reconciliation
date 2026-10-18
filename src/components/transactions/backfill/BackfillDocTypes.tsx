@@ -59,7 +59,11 @@ const IntegrationRow = ({ item, chosen, disabled, onChange }: {
 const BackfillDocTypes = ({ selection, sources, disabled, onChange }: BackfillDocTypesProps) => {
   const categories = DOC_CATEGORIES
     .map((c) => ({ category: c, items: categoryItems(c, sources) }))
-    .filter((c) => c.items.length > 0 || (c.category.id === 'payments' && sources.webhookOnly.length > 0));
+    .filter((c) =>
+      c.items.length > 0 ||
+      (sources.disabled?.[c.category.id] || []).length > 0 ||
+      (c.category.id === 'payments' && sources.webhookOnly.length > 0)
+    );
 
   return (
     <div className="space-y-3">
@@ -80,6 +84,17 @@ const BackfillDocTypes = ({ selection, sources, disabled, onChange }: BackfillDo
                   disabled={disabled}
                   onChange={onChange}
                 />
+              ))}
+              {(sources.disabled?.[category.id] || []).map((d) => (
+                <div key={`off-${d.id}`} className="flex items-start gap-2 text-muted-foreground">
+                  <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-muted-foreground/40 bg-muted">
+                    <Icon name="X" size={12} />
+                  </div>
+                  <div className="text-sm">
+                    {d.name}
+                    <div className="text-xs">Интеграция выключена</div>
+                  </div>
+                </div>
               ))}
               {category.id === 'payments' && sources.webhookOnly.map((w) => (
                 <div key={w.id} className="flex items-start gap-2 text-muted-foreground">

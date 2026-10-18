@@ -18,7 +18,8 @@ import { ActiveSources, fetchActiveSources } from '@/components/transactions/bac
 
 const EventsPage = () => {
   const [backfillSources, setBackfillSources] = useState<ActiveSources>({
-    ecomkassa: [], ofd: [], bank: [], acquiring: [], ecomGateway: [], webhookOnly: []
+    ecomkassa: [], ofd: [], bank: [], acquiring: [], ecomGateway: [], webhookOnly: [],
+    disabled: { payments: [], receipts: [], money: [], orders: [] }
   });
   const { openDialog, completedTick, phase: backfillPhase } = useBackfill();
   const [events, setEvents] = useState<AppEvent[]>([]);

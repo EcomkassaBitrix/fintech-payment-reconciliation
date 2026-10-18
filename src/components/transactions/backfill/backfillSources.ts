@@ -15,6 +15,8 @@ export interface ActiveSources {
   ecomGateway: NamedIntegration[];
   // Эквайринги без выгрузки за период (Т-Банк): только вебхуки, показываем пометкой.
   webhookOnly: NamedIntegration[];
+  // Добавленные, но выключенные интеграции - показываем в категории серым, без выбора.
+  disabled: Record<DocType, NamedIntegration[]>;
 }
 
 export type DocType = 'payments' | 'receipts' | 'money' | 'orders';
@@ -159,7 +161,17 @@ export const fetchActiveSources = async (companyId: number): Promise<ActiveSourc
     integrations
       .filter((i) => slugs.includes(i.provider_slug) && i.status === 'active')
       .map((i) => ({ id: i.id, name: i.integration_name }));
+  const off = (slugs: string[]) =>
+    integrations
+      .filter((i) => slugs.includes(i.provider_slug) && i.status === 'inactive')
+      .map((i) => ({ id: i.id, name: i.integration_name }));
   return {
+    disabled: {
+      payments: off(['alfabank', 'yookassa', 'tochka_acquiring', 'cloudpayments', 'ecomkassa_gateway', 'tbank']),
+      receipts: off(['ecomkassa', 'ofdru']),
+      money: off(['tbank_account', 'tochka_account']),
+      orders: off(['ecomkassa'])
+    },
     ecomkassa: pick(['ecomkassa']),
     ofd: pick(['ofdru']),
     bank: pick(['tbank_account', 'tochka_account']),
