@@ -1,7 +1,7 @@
 {
   "tests": [
     {
-      "name": "Без входа доступ закрыт",
+      "name": "Без входа доступ закрыт (companies-list, GET)",
       "method": "GET",
       "path": "/",
       "expectedStatus": 401,
@@ -11,12 +11,74 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Чужая/поддельная сессия не принимается",
+      "name": "Чужая/поддельная сессия не принимается (companies-list, GET)",
       "method": "GET",
       "path": "/",
       "headers": {
         "X-Session-Id": "fake-session-token"
       },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (companies-create, POST)",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "name": "ООО Ромашка"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (companies-create, POST)",
+      "method": "POST",
+      "path": "/",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "body": {
+        "name": "ООО Ромашка"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (company-lookup-by-inn, GET)",
+      "method": "GET",
+      "path": "/?inn=7707083893",
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (company-lookup-by-inn, GET)",
+      "method": "GET",
+      "path": "/?inn=7707083893",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Лимит компаний без входа закрыт",
+      "method": "GET",
+      "path": "/?user_id=1&view=limit",
       "expectedStatus": 401,
       "expectedBody": {
         "error_code": "session_required"

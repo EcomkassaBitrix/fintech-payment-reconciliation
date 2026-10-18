@@ -48,7 +48,7 @@ const CreateCompany = () => {
   // Сколько компаний уже создано и сколько разрешает тариф.
   useEffect(() => {
     if (!user) return;
-    fetch(`${functionUrls['companies-create']}?user_id=${user.user_id}`)
+    fetch(`${functionUrls['companies-list']}?view=limit&user_id=${user.user_id}`)
       .then((res) => res.json())
       .then((data) => data.success && setUsage({ owned: data.owned, max_companies: data.max_companies }))
       .catch(() => {});
@@ -65,7 +65,7 @@ const CreateCompany = () => {
     setFoundCompany(null);
 
     try {
-      const response = await fetch(`${functionUrls['company-lookup-by-inn']}?inn=${inn}`);
+      const response = await fetch(`${functionUrls['companies-list']}?inn=${inn}`);
       const data = await response.json();
 
       if (response.ok && data.success) {
@@ -85,7 +85,7 @@ const CreateCompany = () => {
 
     setIsCreating(true);
     try {
-      const response = await fetch(functionUrls['companies-create'], {
+      const response = await fetch(functionUrls['companies-list'], {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

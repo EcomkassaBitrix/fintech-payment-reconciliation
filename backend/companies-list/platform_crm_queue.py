@@ -2,7 +2,7 @@
 Очередь передачи в CRM платформы (Битрикс24): событие пишется в platform_crm_events,
 platform-settings разбирает очередь по сигналу (без ожидания), по шагу планировщика и из админки.
 Сбой постановки не ломает регистрацию, профиль и создание компании.
-Одинаковая копия - в auth-phone, profile-update и companies-create.
+Одинаковая копия - в auth-phone, profile-update и companies-list.
 '''
 import json
 import threading
