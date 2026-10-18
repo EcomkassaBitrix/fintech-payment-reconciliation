@@ -235,7 +235,7 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
       for (;;) {
         let data: { success?: boolean; error?: string; found?: number; inserted?: number; next_cursor?: Record<string, unknown> | null; done?: boolean } | null = null;
         try {
-          const res = await fetch(functionUrls['alfabank-fetch-orders'], {
+          const res = await fetch(functionUrls['acquiring-fetch-payments'], {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
