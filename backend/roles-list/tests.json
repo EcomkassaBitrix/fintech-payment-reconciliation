@@ -1,14 +1,8 @@
 {
   "tests": [
-    {
-      "name": "List company roles",
-      "method": "GET",
-      "path": "/",
-      "expectedStatus": 200,
-      "expectedBody": {
-        "success": true
-      },
-      "bodyMatcher": "partial"
-    }
+    {"name": "Список ролей для приглашения доступен", "method": "GET", "path": "/?scope=company", "expectedStatus": 200, "expectedBody": {"success": true}, "bodyMatcher": "partial"},
+    {"name": "Админ-список без входа закрыт", "method": "GET", "path": "/?view=admin", "expectedStatus": 401, "expectedBody": {"error_code": "session_required"}, "bodyMatcher": "partial"},
+    {"name": "Создание роли без входа закрыто", "method": "POST", "path": "/", "body": {"name": "x"}, "expectedStatus": 401, "expectedBody": {"error_code": "session_required"}, "bodyMatcher": "partial"},
+    {"name": "Удаление роли с поддельной сессией закрыто", "method": "DELETE", "path": "/", "headers": {"X-Session-Id": "fake-session-token"}, "body": {"role_id": 1}, "expectedStatus": 401, "expectedBody": {"error_code": "session_required"}, "bodyMatcher": "partial"}
   ]
 }

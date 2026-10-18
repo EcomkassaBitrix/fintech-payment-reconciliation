@@ -29,7 +29,7 @@ const AdminRolesSection = () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      const res = await fetch(`${functionUrls['admin-roles-list']}?requester_user_id=${user.user_id}`);
+      const res = await fetch(`${functionUrls['roles-list']}?view=admin&requester_user_id=${user.user_id}`);
       const data = await res.json();
       if (data.success) {
         setRoles(data.roles || []);
@@ -72,7 +72,7 @@ const AdminRolesSection = () => {
 
     try {
       const isEditing = editingRoleId !== null;
-      const url = isEditing ? functionUrls['admin-roles-update'] : functionUrls['admin-roles-create'];
+      const url = functionUrls['roles-list'];
       const res = await fetch(url, {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -107,7 +107,7 @@ const AdminRolesSection = () => {
     if (!confirm(`Удалить роль «${role.name}»?`)) return;
 
     try {
-      const res = await fetch(functionUrls['admin-roles-delete'], {
+      const res = await fetch(functionUrls['roles-list'], {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requester_user_id: user.user_id, role_id: role.id })
