@@ -13,6 +13,8 @@ export interface ActiveSources {
   acquiring: NamedIntegration[];
   // Платёжный шлюз Екомкассы: только с ним счета Екомкассы - это платежи.
   ecomGateway: NamedIntegration[];
+  // Эквайринги без выгрузки за период (Т-Банк): только вебхуки, показываем пометкой.
+  webhookOnly: NamedIntegration[];
 }
 
 export type DocType = 'payments' | 'receipts' | 'money' | 'orders';
@@ -163,5 +165,6 @@ export const fetchActiveSources = async (companyId: number): Promise<ActiveSourc
     bank: pick(['tbank_account', 'tochka_account']),
     acquiring: pick(['alfabank', 'yookassa', 'tochka_acquiring', 'cloudpayments']),
     ecomGateway: pick(['ecomkassa_gateway']),
+    webhookOnly: pick(['tbank']),
   };
 };

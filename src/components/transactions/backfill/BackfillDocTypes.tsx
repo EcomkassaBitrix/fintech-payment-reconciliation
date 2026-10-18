@@ -59,7 +59,7 @@ const IntegrationRow = ({ item, chosen, disabled, onChange }: {
 const BackfillDocTypes = ({ selection, sources, disabled, onChange }: BackfillDocTypesProps) => {
   const categories = DOC_CATEGORIES
     .map((c) => ({ category: c, items: categoryItems(c, sources) }))
-    .filter((c) => c.items.length > 0);
+    .filter((c) => c.items.length > 0 || (c.category.id === 'payments' && sources.webhookOnly.length > 0));
 
   return (
     <div className="space-y-3">
@@ -80,6 +80,15 @@ const BackfillDocTypes = ({ selection, sources, disabled, onChange }: BackfillDo
                   disabled={disabled}
                   onChange={onChange}
                 />
+              ))}
+              {category.id === 'payments' && sources.webhookOnly.map((w) => (
+                <div key={w.id} className="flex items-start gap-2 text-muted-foreground">
+                  <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
+                  <div className="text-sm">
+                    {w.name}
+                    <div className="text-xs">Загрузка за период недоступна — платежи приходят вебхуками</div>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
