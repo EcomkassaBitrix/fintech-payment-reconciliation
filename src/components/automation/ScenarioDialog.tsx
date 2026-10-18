@@ -132,14 +132,13 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
   const askName = isCorrection && !isV5 && !currentTemplate?.correction_base_name;
   const askDate = isCorrection && currentTemplate?.correction_date_source === 'client';
   const askCashier = form.action_type === 'create_order' && !!currentTemplate?.auto_deliver && !currentTemplate?.cashier_name;
-  const dateLabel =
-    currentTemplate?.correction_date_source === 'today'
-      ? 'текущая дата'
-      : currentTemplate?.correction_date_source === 'fixed'
-        ? 'задана в шаблоне'
-        : currentTemplate?.correction_date_source === 'client'
-          ? 'указывается ниже'
-        : 'дата платежа';
+  const DATE_LABELS: Record<string, string> = {
+    today: 'текущая дата',
+    yesterday: 'вчерашняя дата',
+    fixed: 'задана в шаблоне',
+    client: 'указывается ниже'
+  };
+  const dateLabel = DATE_LABELS[currentTemplate?.correction_date_source || ''] || 'дата платежа';
   const correctionMissing = isCorrection
     ? [
         askNumber && !isV5 && !cs.correction_base_number?.trim() && 'номер основания',

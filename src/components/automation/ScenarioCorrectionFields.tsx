@@ -1,6 +1,9 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CorrectionSettings } from './automationConfig';
+import VariableChips, { DATE_VARIABLES, SEQ_VARIABLE } from './VariableChips';
+
+const isToken = (v?: string) => !!v && v.startsWith('{');
 
 interface ScenarioCorrectionFieldsProps {
   cs: CorrectionSettings;
@@ -24,10 +27,28 @@ const ScenarioCorrectionFields = ({ cs, setCs, isV5, dateLabel, askNumber, askNa
     {askDate && (
       <div className="space-y-1">
         <Label>{isV5 ? 'Дата корректируемого расчёта' : 'Дата документа-основания'}</Label>
-        <Input
-          type="date"
-          value={cs.correction_base_date || ''}
-          onChange={(e) => setCs({ correction_base_date: e.target.value })}
+        {isToken(cs.correction_base_date) ? (
+          <div className="flex h-10 items-center justify-between rounded-md border border-input bg-background px-3 text-sm">
+            <span className="font-mono">{cs.correction_base_date}</span>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setCs({ correction_base_date: '' })}
+            >
+              Выбрать дату
+            </button>
+          </div>
+        ) : (
+          <Input
+            type="date"
+            value={cs.correction_base_date || ''}
+            onChange={(e) => setCs({ correction_base_date: e.target.value })}
+          />
+        )}
+        <VariableChips
+          variables={DATE_VARIABLES}
+          active={cs.correction_base_date}
+          onPick={(token) => setCs({ correction_base_date: token })}
         />
       </div>
     )}
@@ -39,6 +60,13 @@ const ScenarioCorrectionFields = ({ cs, setCs, isV5, dateLabel, askNumber, askNa
           maxLength={32}
           value={cs.correction_base_number || ''}
           onChange={(e) => setCs({ correction_base_number: e.target.value })}
+        />
+        <VariableChips
+          variables={[SEQ_VARIABLE]}
+          onPick={(token) => {
+            const cur = cs.correction_base_number || '';
+            if (!cur.includes(token)) setCs({ correction_base_number: `${cur}${token}`.slice(0, 32) });
+          }}
         />
       </div>
     )}

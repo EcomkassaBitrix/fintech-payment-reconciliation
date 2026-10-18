@@ -66,21 +66,48 @@ def document_operation(template: Dict[str, Any]) -> str:
     return operation
 
 
-def correction_info(template: Dict[str, Any], data: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
+DATE_TOKENS = {'{сегодня}': 'today', '{вчера}': 'yesterday', '{дата платежа}': 'payment'}
+SEQ_TOKEN = '{порядковый номер}'
+
+
+def _correction_seq(cur, job: Optional[Dict[str, Any]]) -> Optional[int]:
+    '''Порядковый номер чека коррекции в компании: сколько коррекций уже отправлено другими заданиями + 1.'''
+    if cur is None or not job or not job.get('company_id'):
+        return None
+    cur.execute(f'''
+        SELECT COUNT(*) FROM {SCHEMA}.automation_documents
+        WHERE company_id = %s AND operation LIKE '%%_correction' AND job_id IS DISTINCT FROM %s
+    ''', (job['company_id'], job.get('id')))
+    return int(cur.fetchone()[0]) + 1
+
+
+def correction_info(template: Dict[str, Any], data: Dict[str, Any], cur=None,
+                    job: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict[str, Any]], str]:
     '''
     correction_info чека коррекции (только самостоятельная, type = self), по АТОЛ Онлайн:
     v4 (ФФД 1.05) - base_date, base_number, base_name - все обязательны (теги 1178, 1179, 1177);
     v5 (ФФД 1.2) - base_date (дата корректируемого расчёта), base_number - если указан.
+    Дата: платежа / сегодня / вчера / фиксированная / из сценария (там же можно {сегодня}, {вчера}, {дата платежа}).
+    В номере {порядковый номер} заменяется на номер коррекции в компании.
     '''
     if template.get('receipt_type') != 'correction':
         return None, ''
-    if template.get('correction_date_source') == 'today':
-        base_date = datetime.now(timezone(timedelta(hours=3))).date()
-    elif template.get('correction_date_source') == 'client' and not template.get('correction_base_date'):
-        return None, 'Не указана дата документа-основания коррекции - заполните в сценарии'
-    elif template.get('correction_date_source') in ('fixed', 'client') and template.get('correction_base_date'):
-        base = template['correction_base_date']
-        base_date = base if isinstance(base, date) else datetime.strptime(str(base)[:10], '%Y-%m-%d').date()
+    source = template.get('correction_date_source') or 'payment'
+    raw = str(template.get('correction_base_date') or '').strip()
+    if source == 'client':
+        if not raw:
+            return None, 'Не указана дата документа-основания коррекции - заполните в сценарии'
+        source = DATE_TOKENS.get(raw, 'fixed')
+    today = datetime.now(MSK).date()
+    if source == 'today':
+        base_date = today
+    elif source == 'yesterday':
+        base_date = today - timedelta(days=1)
+    elif source == 'fixed' and raw:
+        try:
+            base_date = datetime.strptime(raw[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return None, f'Некорректная дата основания коррекции: {raw}'
     else:
         paid_at = (data.get('payment') or {}).get('created_at')
         if not paid_at:
@@ -88,6 +115,11 @@ def correction_info(template: Dict[str, Any], data: Dict[str, Any]) -> Tuple[Opt
         base_date = datetime.fromisoformat(paid_at).date()
     info = {'type': 'self', 'base_date': base_date.strftime('%d.%m.%Y')}
     number = str(template.get('correction_base_number') or '').strip()
+    if SEQ_TOKEN in number:
+        seq = _correction_seq(cur, job)
+        if seq is None:
+            return None, 'Не удалось определить порядковый номер чека коррекции'
+        number = number.replace(SEQ_TOKEN, str(seq))[:32]
     if template.get('protocol_version') == 'v5':
         if number:
             info['base_number'] = number
@@ -309,7 +341,7 @@ def create_order(cur, job: Dict[str, Any], scenario: Dict[str, Any], data: Dict[
     payment_type = template.get('payment_type')
     paid = payment_type is not None
     operation = document_operation(template)
-    correction, err = correction_info(template, data)
+    correction, err = correction_info(template, data, cur, job)
     if err:
         return 'error', {}, err
     external_id = make_external_id(job, data, source_company.get('inn'), operation)
@@ -429,7 +461,7 @@ def create_receipt(cur, job: Dict[str, Any], scenario: Dict[str, Any], data: Dic
                                  'payment_address': source_company.get('payment_address'),
                                  'email': source_company.get('email')}.items() if v}
     operation = document_operation(template)
-    correction, err = correction_info(template, data)
+    correction, err = correction_info(template, data, cur, job)
     if err:
         return 'error', {}, err
     payment_type = template.get('payment_type')

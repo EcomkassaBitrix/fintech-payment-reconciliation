@@ -1,6 +1,7 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import ReceiptFieldSelect from './ReceiptFieldSelect';
+import VariableChips, { SEQ_VARIABLE } from '@/components/automation/VariableChips';
 import { ActionTemplateForm, DATE_SOURCE_OPTIONS } from './actionTemplatesConfig';
 
 interface CorrectionFieldsBlockProps {
@@ -40,6 +41,13 @@ const CorrectionFieldsBlock = ({ form, onChange }: CorrectionFieldsBlockProps) =
       <div className="space-y-2">
         <Label>Номер документа основания{v5 ? ' (необязательно)' : ''}</Label>
         <Input value={form.correction_base_number} maxLength={32} placeholder="Заполнит клиент" onChange={set('correction_base_number')} />
+        <VariableChips
+          variables={[SEQ_VARIABLE]}
+          onPick={(token) => {
+            if (!form.correction_base_number.includes(token))
+              onChange({ ...form, correction_base_number: `${form.correction_base_number}${token}`.slice(0, 32) });
+          }}
+        />
         {!v5 && <p className="text-xs text-muted-foreground">Обязателен в v4 — если пусто, клиент укажет в сценарии</p>}
       </div>
 

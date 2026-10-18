@@ -254,6 +254,7 @@ export const EMPTY_TEMPLATE: ActionTemplateForm = {
 export const DATE_SOURCE_OPTIONS: Option[] = [
   { value: 'payment', label: 'Дата платежа' },
   { value: 'today', label: 'Сегодня' },
+  { value: 'yesterday', label: 'Вчера' },
   { value: 'fixed', label: 'Фиксированная дата' },
   { value: 'client', label: 'Заполнит клиент' }
 ];

@@ -105,7 +105,9 @@ def validate(cur, company_id: int, body: Dict[str, Any]) -> Optional[str]:
                 return 'Укажите номер документа-основания коррекции (обязателен для протокола v4)'
             if not str(template[7] or cs.get('correction_base_name') or '').strip():
                 return 'Укажите описание коррекции (обязательно для протокола v4)'
-        if template[5] == 'client' and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(cs.get('correction_base_date') or '').strip()):
+        base_date = str(cs.get('correction_base_date') or '').strip()
+        if template[5] == 'client' and base_date not in ('{сегодня}', '{вчера}', '{дата платежа}') \
+                and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', base_date):
             return 'Укажите дату документа-основания коррекции'
     if template[3] == 'agent':
         agent, error = clean_agent((body.get('correction_settings') or {}).get('agent')
