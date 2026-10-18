@@ -41,7 +41,7 @@ const useInviteActions = ({ companyId, companyName, userId, roles, invites, setI
     setIsLoading(true);
 
     try {
-      const inviteRes = await fetch(functionUrls['company-users-invite'], {
+      const inviteRes = await fetch(functionUrls['company-users-list'], {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -130,7 +130,7 @@ const useInviteActions = ({ companyId, companyName, userId, roles, invites, setI
     setResendingId(invite.id);
 
     try {
-      const inviteRes = await fetch(functionUrls['company-users-invite'], {
+      const inviteRes = await fetch(functionUrls['company-users-list'], {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -196,7 +196,7 @@ const useInviteActions = ({ companyId, companyName, userId, roles, invites, setI
   const cancelInvite = async (inviteId: number) => {
     if (!companyId) return;
     try {
-      const res = await fetch(functionUrls['company-users-update'], {
+      const res = await fetch(functionUrls['company-users-list'], {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company_id: companyId, invite_id: inviteId })

@@ -50,7 +50,7 @@ const useAccessUsers = (companyId: number | undefined, refreshCompanies: () => P
     const newStatus = targetUser.status === 'active' ? 'blocked' : 'active';
 
     try {
-      const res = await fetch(functionUrls['company-users-update'], {
+      const res = await fetch(functionUrls['company-users-list'], {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company_id: companyId, user_id: userId, status: newStatus })
@@ -71,7 +71,7 @@ const useAccessUsers = (companyId: number | undefined, refreshCompanies: () => P
     if (!companyId) return;
 
     try {
-      const res = await fetch(functionUrls['company-users-update'], {
+      const res = await fetch(functionUrls['company-users-list'], {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company_id: companyId, user_id: userId })
@@ -91,7 +91,7 @@ const useAccessUsers = (companyId: number | undefined, refreshCompanies: () => P
   const transferOwner = async (userId: number): Promise<boolean> => {
     if (!companyId) return false;
     try {
-      const res = await fetch(functionUrls['company-users-update'], {
+      const res = await fetch(functionUrls['company-users-list'], {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'transfer_owner', company_id: companyId, user_id: userId })

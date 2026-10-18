@@ -1,7 +1,7 @@
 {
   "tests": [
     {
-      "name": "Без входа доступ закрыт",
+      "name": "Без входа доступ закрыт (company-users-list, GET)",
       "method": "GET",
       "path": "/",
       "expectedStatus": 401,
@@ -11,11 +11,126 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Чужая/поддельная сессия не принимается",
+      "name": "Чужая/поддельная сессия не принимается (company-users-list, GET)",
       "method": "GET",
       "path": "/",
       "headers": {
         "X-Session-Id": "fake-session-token"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (company-users-invite, POST)",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "company_id": 1
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (company-users-invite, POST)",
+      "method": "POST",
+      "path": "/",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "body": {
+        "company_id": 1
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (company-users-update, PUT)",
+      "method": "PUT",
+      "path": "/",
+      "body": {
+        "company_id": 1
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (company-users-update, PUT)",
+      "method": "PUT",
+      "path": "/",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "body": {
+        "company_id": 1
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "GET invite not found (invite-accept, GET)",
+      "method": "GET",
+      "path": "/?token=nonexistent_token_123",
+      "expectedStatus": 404,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (invite-accept, POST)",
+      "method": "POST",
+      "path": "/",
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial",
+      "body": {
+        "token": "x",
+        "user_id": 1,
+        "phone": "79990000001"
+      }
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (invite-accept, POST)",
+      "method": "POST",
+      "path": "/",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial",
+      "body": {
+        "token": "x",
+        "user_id": 1,
+        "phone": "79990000001"
+      }
+    },
+    {
+      "name": "Удаление сотрудника без входа закрыто (DELETE)",
+      "method": "DELETE",
+      "path": "/",
+      "body": {
+        "company_id": 1,
+        "user_id": 1
       },
       "expectedStatus": 401,
       "expectedBody": {

@@ -54,7 +54,7 @@ const InvitePage = () => {
     const loadInvite = async () => {
       if (!token) return;
       try {
-        const res = await fetch(`${functionUrls['invite-accept']}?token=${token}`);
+        const res = await fetch(`${functionUrls['company-users-list']}?token=${token}`);
         const data = await res.json();
 
         if (res.ok && data.success) {
@@ -85,7 +85,7 @@ const InvitePage = () => {
     acceptRequestedRef.current = true;
     setIsAccepting(true);
     try {
-      const res = await fetch(functionUrls['invite-accept'], {
+      const res = await fetch(functionUrls['company-users-list'], {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, user_id: userId, phone: userPhone })
