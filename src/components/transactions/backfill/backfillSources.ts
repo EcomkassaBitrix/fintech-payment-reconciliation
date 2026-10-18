@@ -9,10 +9,13 @@ export interface ActiveSources {
   ecomkassa: NamedIntegration[];
   ofd: NamedIntegration[];
   bank: NamedIntegration[];
+  alfabank: NamedIntegration[];
+  // Платёжный шлюз Екомкассы: только с ним счета Екомкассы - это платежи.
+  ecomGateway: NamedIntegration[];
 }
 
 export type DocType = 'payments' | 'receipts' | 'money' | 'orders';
-export type SourceKind = 'ecomkassa' | 'ofd' | 'bank';
+export type SourceKind = 'ecomkassa' | 'ofd' | 'bank' | 'alfabank';
 
 // Статус документа в окне загрузки -> коды статусов Екомкассы (для ОФД и банков
 // статус один и служит подписью).
@@ -36,14 +39,17 @@ export interface DocCategory {
 }
 
 // Категория -> интеграции -> статусы документов.
-// - Платежи: счета Екомкассы (INVC - счёт с оплатой через шлюз = факт платежа);
+// - Платежи: эквайринг Альфа-Банка + счета Екомкассы (INVC), если подключён её платёжный шлюз;
 // - Чеки: чеки Екомкассы (VCHR) + чеки ОФД;
 // - Деньги: выписка по расчётным счетам банков;
 // - Заказы: курьерские заказы Екомкассы (CORD).
 export const DOC_CATEGORIES: DocCategory[] = [
   {
     id: 'payments', label: 'Платежи', icon: 'CreditCard',
-    sources: [{ kind: 'ecomkassa', orderType: 'INVC', statuses: [{ id: 'paid', label: 'Оплачено', codes: ['PAID', 'COMPLETED'] }] }]
+    sources: [
+      { kind: 'alfabank', statuses: [{ id: 'paid', label: 'Оплачено', codes: [] }, { id: 'refunded', label: 'Возврат', codes: [] }] },
+      { kind: 'ecomkassa', orderType: 'INVC', statuses: [{ id: 'paid', label: 'Оплачено', codes: ['PAID', 'COMPLETED'] }] }
+    ]
   },
   {
     id: 'receipts', label: 'Чеки', icon: 'Receipt',
@@ -74,13 +80,14 @@ export interface SourceItem {
 
 export const categoryItems = (category: DocCategory, s: ActiveSources): SourceItem[] =>
   category.sources.flatMap((src): SourceItem[] => {
-    if (src.kind === 'bank') {
-      return s.bank.map((b) => ({
-        key: `${category.id}|bank-${b.id}`, kind: 'bank', name: b.name, integrationId: b.id, statuses: src.statuses
+    if (src.kind === 'bank' || src.kind === 'alfabank') {
+      return s[src.kind].map((b) => ({
+        key: `${category.id}|${src.kind}-${b.id}`, kind: src.kind, name: b.name, integrationId: b.id, statuses: src.statuses
       }));
     }
     const list = src.kind === 'ofd' ? s.ofd : s.ecomkassa;
     if (list.length === 0) return [];
+    if (src.orderType === 'INVC' && s.ecomGateway.length === 0) return [];
     return [{
       key: `${category.id}|${src.kind}`, kind: src.kind, name: list.map((i) => i.name).join(', '),
       orderType: src.orderType, statuses: src.statuses
@@ -102,23 +109,26 @@ export interface BackfillPlan {
   typeStatuses: Record<string, string[]>;
   hasOfd: boolean;
   bankIds: number[];
+  alfabank: { id: number; statuses: string[] }[];
 }
 
 export const buildPlan = (selection: Selection, s: ActiveSources): BackfillPlan => {
   const typeStatuses: Record<string, string[]> = {};
   let hasOfd = false;
   const bankIds: number[] = [];
+  const alfabank: { id: number; statuses: string[] }[] = [];
   DOC_CATEGORIES.forEach((c) => categoryItems(c, s).forEach((item) => {
     const chosen = item.statuses.filter((st) => (selection[item.key] || []).includes(st.id));
     if (chosen.length === 0) return;
     if (item.kind === 'ofd') hasOfd = true;
     else if (item.kind === 'bank' && item.integrationId) bankIds.push(item.integrationId);
+    else if (item.kind === 'alfabank' && item.integrationId) alfabank.push({ id: item.integrationId, statuses: chosen.map((st) => st.id) });
     else if (item.kind === 'ecomkassa' && item.orderType) {
       const codes = new Set([...(typeStatuses[item.orderType] || []), ...chosen.flatMap((st) => st.codes)]);
       typeStatuses[item.orderType] = Array.from(codes);
     }
   }));
-  return { typeStatuses, hasOfd, bankIds };
+  return { typeStatuses, hasOfd, bankIds, alfabank };
 };
 
 interface IntegrationRow {
@@ -142,5 +152,7 @@ export const fetchActiveSources = async (companyId: number): Promise<ActiveSourc
     ecomkassa: pick(['ecomkassa']),
     ofd: pick(['ofdru']),
     bank: pick(['tbank_account', 'tochka_account']),
+    alfabank: pick(['alfabank']),
+    ecomGateway: pick(['ecomkassa_gateway']),
   };
 };

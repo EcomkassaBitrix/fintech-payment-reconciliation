@@ -19,7 +19,6 @@ import BackfillDocTypes from './backfill/BackfillDocTypes';
 import BackfillProgress from './backfill/BackfillProgress';
 import {
   ActiveSources,
-  NamedIntegration,
   Selection,
   buildPlan,
   fetchActiveSources,
@@ -27,9 +26,7 @@ import {
 } from './backfill/backfillSources';
 
 interface BackfillDialogProps {
-  ecomkassaIntegrations: NamedIntegration[];
-  ofdIntegrations: NamedIntegration[];
-  bankIntegrations: NamedIntegration[];
+  sources: ActiveSources;
 }
 
 // Верхняя граница периода - конец СЕГОДНЯШНЕГО дня: ручная дозагрузка
@@ -49,7 +46,7 @@ const monthAgo = () => {
 
 // Диалог - только "витрина" для процесса, который живёт в BackfillContext
 // (смонтирован на уровне App.tsx). Свернуть окно не останавливает загрузку.
-const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegrations }: BackfillDialogProps) => {
+const BackfillDialog = ({ sources }: BackfillDialogProps) => {
   const { currentCompany } = useAuth();
   const companyId = currentCompany?.id;
   const { toast } = useToast();
@@ -61,10 +58,11 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
   const [selection, setSelection] = useState<Selection>({});
   const [isChecking, setIsChecking] = useState(false);
 
-  const sources: ActiveSources = { ecomkassa: ecomkassaIntegrations, ofd: ofdIntegrations, bank: bankIntegrations };
-  const hasAnySource = sources.ecomkassa.length > 0 || sources.ofd.length > 0 || sources.bank.length > 0;
+  const hasAnySource = sources.ecomkassa.length > 0 || sources.ofd.length > 0 || sources.bank.length > 0
+    || sources.alfabank.length > 0;
   const plan = buildPlan(selection, sources);
-  const hasSelection = Object.keys(plan.typeStatuses).length > 0 || plan.hasOfd || plan.bankIds.length > 0;
+  const hasSelection = Object.keys(plan.typeStatuses).length > 0 || plan.hasOfd || plan.bankIds.length > 0
+    || plan.alfabank.length > 0;
   const isRunning = phase === 'running';
 
   // Новые подключённые интеграции по умолчанию выбраны целиком; выбор,
@@ -106,9 +104,11 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
     const useEcomkassa = fresh.ecomkassa.length > 0 && orderTypes.length > 0;
     const useOfd = freshPlan.hasOfd;
     const banks = fresh.bank.filter((b) => freshPlan.bankIds.includes(b.id));
+    const alfabank = freshPlan.alfabank
+      .map((a) => ({ ...a, name: fresh.alfabank.find((i) => i.id === a.id)?.name || 'Альфа-Банк' }));
     const allStatuses = Array.from(new Set(Object.values(freshPlan.typeStatuses).flat()));
 
-    if (!useEcomkassa && !useOfd && banks.length === 0) {
+    if (!useEcomkassa && !useOfd && banks.length === 0 && alfabank.length === 0) {
       toast({
         title: 'Нет активных интеграций',
         description: 'Для выбранных документов нет активной интеграции — проверьте раздел «Интеграции»',
@@ -132,6 +132,7 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
       typeStatuses: freshPlan.typeStatuses,
       hasOfd: useOfd,
       bankIntegrations: banks,
+      alfabankIntegrations: alfabank,
       ecomkassaNames: fresh.ecomkassa.map((i) => i.name),
       ofdNames: fresh.ofd.map((i) => i.name)
     });
@@ -164,8 +165,8 @@ const BackfillDialog = ({ ecomkassaIntegrations, ofdIntegrations, bankIntegratio
           <div className="flex items-center gap-3 bg-muted/50 border border-border rounded-lg p-4">
             <Icon name="AlertTriangle" size={20} className="text-muted-foreground shrink-0" />
             <div className="text-sm text-muted-foreground">
-              У компании нет активных интеграций с поддержкой дозагрузки (касса Екомкасса, ОФД
-              или расчётный счёт) — сначала подключите их в разделе «Интеграции»
+              У компании нет активных интеграций с поддержкой дозагрузки (эквайринг Альфа-Банка,
+              касса Екомкасса, ОФД или расчётный счёт) — сначала подключите их в разделе «Интеграции»
             </div>
           </div>
         ) : (

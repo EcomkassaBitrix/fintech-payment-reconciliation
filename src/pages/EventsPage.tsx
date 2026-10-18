@@ -14,20 +14,12 @@ import functionUrls from '../../backend/func2url.json';
 import { resyncGateway } from '@/lib/gatewayResync';
 import { useBackfill } from '@/contexts/BackfillContext';
 import BackfillDialog from '@/components/transactions/BackfillDialog';
-
-interface IntegrationRow {
-  id: number;
-  integration_name: string;
-  provider_slug: string;
-  status: string;
-}
-
-type SourceOption = { id: number; name: string };
+import { ActiveSources, fetchActiveSources } from '@/components/transactions/backfill/backfillSources';
 
 const EventsPage = () => {
-  const [ecomkassaIntegrations, setEcomkassaIntegrations] = useState<SourceOption[]>([]);
-  const [ofdIntegrations, setOfdIntegrations] = useState<SourceOption[]>([]);
-  const [bankIntegrations, setBankIntegrations] = useState<SourceOption[]>([]);
+  const [backfillSources, setBackfillSources] = useState<ActiveSources>({
+    ecomkassa: [], ofd: [], bank: [], alfabank: [], ecomGateway: []
+  });
   const { openDialog, completedTick, phase: backfillPhase } = useBackfill();
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -84,19 +76,7 @@ const EventsPage = () => {
   // чтобы только что подключённая касса/банк сразу появились в списке.
   const fetchBackfillSources = () => {
     if (!companyId) return;
-    fetch(`${functionUrls['integrations-list']}?company_id=${companyId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        const integrations: IntegrationRow[] = data.user_integrations || [];
-        const pick = (slugs: string[]) =>
-          integrations
-            .filter((i) => slugs.includes(i.provider_slug) && i.status === 'active')
-            .map((i) => ({ id: i.id, name: i.integration_name }));
-        setEcomkassaIntegrations(pick(['ecomkassa']));
-        setOfdIntegrations(pick(['ofdru']));
-        setBankIntegrations(pick(['tbank_account', 'tochka_account']));
-      })
-      .catch(() => {});
+    fetchActiveSources(companyId).then(setBackfillSources).catch(() => {});
   };
 
   const openBackfillDialog = () => {
@@ -221,11 +201,7 @@ const EventsPage = () => {
         event={selectedEvent}
       />
 
-      <BackfillDialog
-        ecomkassaIntegrations={ecomkassaIntegrations}
-        ofdIntegrations={ofdIntegrations}
-        bankIntegrations={bankIntegrations}
-      />
+      <BackfillDialog sources={backfillSources} />
     </div>
   );
 };

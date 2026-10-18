@@ -48,7 +48,7 @@ const BackfillProgress = () => {
         </div>
       )}
 
-      {lastConfig.bankIntegrations.map((bi) => {
+      {[...(lastConfig.alfabankIntegrations || []), ...lastConfig.bankIntegrations].map((bi) => {
         const result = bankResults[bi.id];
         return (
           <div key={bi.id} className="flex items-center justify-between text-sm">
