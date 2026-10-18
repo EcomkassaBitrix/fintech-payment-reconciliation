@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import urllib.request
@@ -11,11 +12,18 @@ import payment_verify
 from actions import ACTIONS
 from cron_report import record_cron_run
 from auth_guard import guard, internal_headers
+from db_safe import connect, is_transient, safe_rollback, with_retry
 
 NOTIFICATIONS_URL = 'https://functions.poehali.dev/8f4541fc-6ff8-4816-a954-324e4278743d'
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 BATCH = 20
+# Сколько секунд один вызов обрабатывает очередь. Остаток - следующему вызову (планировщик/кабинет),
+# поэтому при сотнях компаний и заданий вызов не упирается в тайм-аут функции.
+RUN_BUDGET_SEC = 3
+# Запас до тайм-аута функции: одно задание может ждать кассу/банк несколько секунд.
+JOB_RESERVE_SEC = 8
+MAX_JOBS_PER_RUN = 50
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -73,7 +81,7 @@ def mark_failed(cur, job: Dict[str, Any], message: str, attempts: int) -> None:
         ''', (row[0], job['company_id']))
 
 
-def claim_jobs(cur, company_id=None, job_id=None) -> List[Dict[str, Any]]:
+def claim_jobs(cur, company_id=None, job_id=None, limit: int = BATCH) -> List[Dict[str, Any]]:
     '''Занимает задания на 2 минуты (SKIP LOCKED) - параллельный запуск их не возьмёт.'''
     # Задание, зависшее «в работе» (сбой посреди обработки, касса не ответила),
     # после истечения блокировки (2 мин) снова берётся в работу как обычный повтор.
@@ -95,7 +103,7 @@ def claim_jobs(cur, company_id=None, job_id=None) -> List[Dict[str, Any]]:
         FROM (
             SELECT j.id, j.status AS prev_status FROM {SCHEMA}.automation_jobs j
             WHERE {' AND '.join(where)}
-            ORDER BY j.next_attempt_at LIMIT {BATCH}
+            ORDER BY j.next_attempt_at LIMIT {int(limit)}
             FOR UPDATE SKIP LOCKED
         ) c
         WHERE u.id = c.id
@@ -159,6 +167,8 @@ def process_job(cur, job: Dict[str, Any]) -> str:
         try:
             status, data, message = prepare(cur, job, scenario)
         except Exception as e:
+            if is_transient(e):
+                raise
             status, data, message = 'error', {}, f'Сбой подготовки: {e}'
 
     if status == 'error':
@@ -208,6 +218,8 @@ def run_action(cur, job: Dict[str, Any], scenario: Dict[str, Any], data: Dict[st
     try:
         status, result, message = action(cur, job, scenario, data)
     except Exception as e:
+        if is_transient(e):
+            raise
         status, result, message = 'error', {}, f'Сбой действия: {e}'
     if status == 'error':
         cur.execute(f'UPDATE {SCHEMA}.automation_jobs SET step = %s WHERE id = %s', ('action', job['id']))
@@ -344,30 +356,120 @@ def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
     return created
 
 
-def run(cur, conn, company_id=None, job_id=None) -> Dict[str, int]:
-    jobs = claim_jobs(cur, company_id, job_id)
+def requeue_after_crash(cur, conn, job: Dict[str, Any], e: Exception) -> str:
+    '''
+    Задание упало посреди обработки (перегрузка базы, обрыв связи, ошибка в коде):
+    не оставляем его «в работе», а возвращаем в очередь. Временный сбой базы не тратит попытку.
+    '''
+    transient = is_transient(e)
+    message = 'Временная перегрузка, повторим автоматически' if transient else f'Сбой обработки: {e}'
+    print(f'[job {job["id"]}] crashed: {e}')
+
+    def save():
+        if not transient and retry_delay(job['attempts']) is None:
+            mark_failed(cur, job, message, job['attempts'])
+            return 'failed'
+        delay = 1 if transient else retry_delay(job['attempts'])
+        cur.execute(f'''
+            UPDATE {SCHEMA}.automation_jobs SET status = 'error', last_error = %s, locked_until = NULL,
+                   attempts = CASE WHEN %s THEN GREATEST(attempts - 1, 0) ELSE attempts END,
+                   next_attempt_at = NOW() + (%s || ' minutes')::interval, updated_at = NOW()
+            WHERE id = %s AND status = 'processing'
+        ''', (message, transient, str(delay), job['id']))
+        log(cur, job['id'], 'error', f'{message}. Повтор через {delay} мин')
+        return 'error'
+
+    try:
+        return with_retry(conn, save)
+    except Exception as e2:
+        # База так и не ответила - задание разблокируется само через 2 минуты и будет взято повторно.
+        print(f'[job {job["id"]}] requeue failed: {e2}')
+        return 'error'
+
+
+def run_budget(context: Any) -> float:
+    '''Сколько секунд можно брать новые задания: остаток времени функции минус запас на одно задание.'''
+    try:
+        remaining = context.get_remaining_time_in_millis() / 1000.0
+        return max(0.5, remaining - JOB_RESERVE_SEC)
+    except Exception:
+        return RUN_BUDGET_SEC
+
+
+def run(cur, conn, company_id=None, job_id=None, budget_sec: float = RUN_BUDGET_SEC) -> Dict[str, int]:
+    '''
+    Обрабатывает очередь по одному заданию: занять -> выполнить -> зафиксировать.
+    Сбой одного задания не задевает остальные; запросы к базе идут последовательно,
+    без всплесков, а при её перегрузке - с паузой и повтором. Время вызова ограничено.
+    '''
+    started = time.time()
     result: Dict[str, int] = {}
-    active = []
-    for job in jobs:
-        if not job.get('was_stuck'):
-            active.append(job)
-            continue
-        message = 'Обработка прервалась (сбой или касса не ответила)'
-        if retry_delay(job['attempts'] - 1) is None and not job_id:
-            # Зависало на каждой попытке - лимит исчерпан, дальше только вручную.
-            mark_failed(cur, job, message, job['attempts'] - 1)
-            result['failed'] = result.get('failed', 0) + 1
-            continue
-        log(cur, job['id'], 'error', f'{message} - задание взято в работу повторно')
-        active.append(job)
-    conn.commit()
-    for job in active:
-        status = process_job(cur, job)
-        conn.commit()
+    seen = set()
+    for _ in range(1 if job_id else MAX_JOBS_PER_RUN):
+        if time.time() - started > budget_sec:
+            break
+        try:
+            jobs = with_retry(conn, lambda: claim_jobs(cur, company_id, job_id, limit=1))
+        except Exception as e:
+            print(f'claim failed: {e}')
+            break
+        if not jobs or jobs[0]['id'] in seen:
+            break
+        job = jobs[0]
+        seen.add(job['id'])
+        try:
+            if job.get('was_stuck'):
+                message = 'Обработка прервалась (сбой или касса не ответила)'
+                if retry_delay(job['attempts'] - 1) is None and not job_id:
+                    # Зависало на каждой попытке - лимит исчерпан, дальше только вручную.
+                    mark_failed(cur, job, message, job['attempts'] - 1)
+                    conn.commit()
+                    result['failed'] = result.get('failed', 0) + 1
+                    continue
+                log(cur, job['id'], 'error', f'{message} - задание взято в работу повторно')
+                conn.commit()
+            status = process_job(cur, job)
+            conn.commit()
+        except Exception as e:
+            safe_rollback(conn)
+            status = requeue_after_crash(cur, conn, job, e)
         result[status] = result.get(status, 0) + 1
     if result.get('failed'):
         signal_notifications(company_id)
     return result
+
+
+def heartbeat_extras(cur, conn, body: Dict[str, Any]) -> None:
+    '''
+    Сигнал из кабинета/планировщика: заодно - неотправленные дубли уведомлений и ежедневная
+    проверка «платежи без чека за вчера», только если по компании есть что делать.
+    «Вчера» по часовому поясу компании считаем в коде: функции поясов в SQL платформа запрещает.
+    '''
+    if not body.get('heartbeat') or not body.get('company_id'):
+        return
+    company_id = body['company_id']
+
+    def check():
+        cur.execute(f'SELECT timezone FROM {SCHEMA}.companies WHERE id = %s', (company_id,))
+        tz_row = cur.fetchone()
+        try:
+            company_tz = ZoneInfo((tz_row[0] if tz_row else None) or 'Europe/Moscow')
+        except Exception:
+            company_tz = ZoneInfo('Europe/Moscow')
+        yesterday = (datetime.now(company_tz).date() - timedelta(days=1)).isoformat()
+        cur.execute(f'''
+            SELECT
+                EXISTS (SELECT 1 FROM {SCHEMA}.notification_deliveries d
+                        JOIN {SCHEMA}.notifications n ON n.id = d.notification_id
+                        WHERE n.company_id = %s AND d.status = 'pending'),
+                NOT EXISTS (SELECT 1 FROM {SCHEMA}.notification_checks c
+                            WHERE c.company_id = %s AND c.kind = 'missing_receipts' AND c.period = %s)
+        ''', (company_id, company_id, yesterday))
+        return cur.fetchone()
+
+    pending, daily_due = with_retry(conn, check)
+    if pending or daily_due:
+        signal_notifications(company_id, daily=daily_due)
 
 
 def signal_notifications(company_id=None, daily: bool = False):
@@ -398,7 +500,7 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': '', 'isBase64Encoded': False}
 
     params = event.get('queryStringParameters') or {}
-    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    conn = connect(os.environ['DATABASE_URL'])
     cur = conn.cursor()
     try:
         if method == 'POST':
@@ -411,37 +513,23 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     except Exception as e:
                         conn.rollback()
                         print(f'discrepancy scan failed: {e}')
-                processed = run(cur, conn, body.get('company_id'))
-                if body.get('heartbeat') and body.get('company_id'):
-                    # Сигнал из открытого кабинета: заодно - неотправленные дубли
-                    # уведомлений и ежедневная проверка «платежи без чека за вчера»,
-                    # только если по компании есть что делать (без лишних вызовов).
-                    # «Вчера» по часовому поясу компании считаем в коде: функции поясов в SQL платформа запрещает.
-                    cur.execute(f'SELECT timezone FROM {SCHEMA}.companies WHERE id = %s', (body['company_id'],))
-                    tz_row = cur.fetchone()
-                    try:
-                        company_tz = ZoneInfo((tz_row[0] if tz_row else None) or 'Europe/Moscow')
-                    except Exception:
-                        company_tz = ZoneInfo('Europe/Moscow')
-                    yesterday = (datetime.now(company_tz).date() - timedelta(days=1)).isoformat()
-                    cur.execute(f'''
-                        SELECT
-                            EXISTS (SELECT 1 FROM {SCHEMA}.notification_deliveries d
-                                    JOIN {SCHEMA}.notifications n ON n.id = d.notification_id
-                                    WHERE n.company_id = %s AND d.status = 'pending'),
-                            NOT EXISTS (SELECT 1 FROM {SCHEMA}.notification_checks c
-                                        WHERE c.company_id = %s AND c.kind = 'missing_receipts' AND c.period = %s)
-                    ''', (body['company_id'], body['company_id'], yesterday))
-                    pending, daily_due = cur.fetchone()
-                    if pending or daily_due:
-                        signal_notifications(body['company_id'], daily=daily_due)
+                processed = run(cur, conn, body.get('company_id'), budget_sec=run_budget(context))
+                try:
+                    heartbeat_extras(cur, conn, body)
+                except Exception as e:
+                    safe_rollback(conn)
+                    print(f'heartbeat extras failed: {e}')
                 return respond(200, {'success': True, 'processed': processed})
             if action == 'retry':
                 if not body.get('company_id') or not body.get('job_id'):
                     return respond(400, {'error': 'company_id and job_id required'})
                 cur.execute(f'''
-                    UPDATE {SCHEMA}.automation_jobs SET next_attempt_at = NOW(), attempts = 0, status = 'new', updated_at = NOW()
-                    WHERE id = %s AND company_id = %s AND status IN ('error', 'failed', 'skipped') RETURNING id
+                    UPDATE {SCHEMA}.automation_jobs SET next_attempt_at = NOW(), attempts = 0, status = 'new',
+                           locked_until = NULL, updated_at = NOW()
+                    WHERE id = %s AND company_id = %s
+                      AND (status IN ('error', 'failed', 'skipped')
+                           OR status = 'processing' AND (locked_until IS NULL OR locked_until < NOW()))
+                    RETURNING id
                 ''', (body['job_id'], body['company_id']))
                 if not cur.fetchone():
                     conn.rollback()

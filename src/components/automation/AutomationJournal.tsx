@@ -30,6 +30,12 @@ const FILTERS: { value: string; label: string }[] = [
   { value: 'ready', label: 'Собраны' }
 ];
 
+// «В работе» дольше блокировки (2 мин) - обработка прервалась, задание можно повторить вручную.
+const STUCK_MS = 3 * 60_000;
+const isStuck = (job: { status: string; updated_at?: string | null }) =>
+  job.status === 'processing' && !!job.updated_at &&
+  Date.now() - new Date(job.updated_at.endsWith('Z') ? job.updated_at : `${job.updated_at}Z`).getTime() > STUCK_MS;
+
 const URL_RE = /(https?:\/\/[^\s)]+)/g;
 
 const Message = ({ text }: { text: string }) => (
@@ -164,6 +170,9 @@ const AutomationJournal = ({ open, onOpenChange }: AutomationJournalProps) => {
                       {job.status === 'error' && job.next_attempt_at && ` · следующая попытка ${formatDateTime(job.next_attempt_at, timezone, true)}`}
                     </div>
                     {job.last_error && <div className="mt-1 break-words text-xs text-destructive [overflow-wrap:anywhere]">{job.last_error}</div>}
+                    {isStuck(job) && (
+                      <div className="mt-1 text-xs text-muted-foreground">Обработка прервалась - задание повторится автоматически, или нажмите «Повторить сейчас»</div>
+                    )}
                     {job.status === 'failed' && (
                       <div className="mt-1 text-xs text-muted-foreground">Автоповторы закончились - проверьте причину и нажмите «Повторить сейчас»</div>
                     )}
@@ -180,7 +189,7 @@ const AutomationJournal = ({ open, onOpenChange }: AutomationJournalProps) => {
                         </span>
                       </div>
                     ))}
-                    {(job.status === 'error' || job.status === 'failed') && (
+                    {(job.status === 'error' || job.status === 'failed' || isStuck(job)) && (
                       <Button size="sm" variant="outline" className="gap-1.5" disabled={retrying === job.id} onClick={() => retry(job)}>
                         <Icon name={retrying === job.id ? 'Loader2' : 'RotateCw'} size={14} className={retrying === job.id ? 'animate-spin' : ''} />
                         Повторить сейчас

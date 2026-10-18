@@ -520,6 +520,17 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
                     'order_types': ['INVC', 'CORD', 'VCHR'], 'statuses': ['PAID', 'COMPLETED'], 'batch_size': 30,
                     'cron_source': 'ecomkassa_receipts', 'cron_item': 'search'
                 }))
+    # Очередь автоматизации всех компаний - одним вызовом на каждом шаге, не дожидаясь,
+    # пока компания дойдёт в обходе по кругу: повторы и зависшие задания не ждут часами.
+    if source_on(settings, 'automation'):
+        cur.execute(f'''
+            SELECT 1 FROM {SCHEMA}.automation_jobs
+            WHERE status IN ('new', 'error') AND next_attempt_at <= NOW()
+               OR status = 'processing' AND locked_until < NOW()
+            LIMIT 1
+        ''')
+        if cur.fetchone():
+            tasks.append((0, JOBS_URL, {'action': 'run'}))
     for company_id in daily_check_ids:
         tasks.append((company_id, NOTIFICATIONS_URL, {'action': 'dispatch', 'company_id': company_id, 'daily': True}))
     try:

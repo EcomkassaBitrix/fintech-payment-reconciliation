@@ -35,6 +35,7 @@ export interface AutomationJob {
   last_error: string | null;
   next_attempt_at: string | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface IntegrationOption {
