@@ -6,7 +6,6 @@ import { useBackfill } from '@/contexts/BackfillContext';
 import { DateFilter } from '@/components/transactions/TransactionsFilters';
 import TransactionDetailsDialog from '@/components/transactions/TransactionDetailsDialog';
 import DeleteTransactionsDialog from '@/components/transactions/DeleteTransactionsDialog';
-import BackfillDialog from '@/components/transactions/BackfillDialog';
 import TransactionsPageHeader from '@/components/transactions/TransactionsPageHeader';
 import TransactionsSummaryCards from '@/components/transactions/TransactionsSummaryCards';
 import TransactionsRegistryCard from '@/components/transactions/TransactionsRegistryCard';
@@ -18,13 +17,6 @@ import { DEFAULT_TIMEZONE } from '@/lib/formatDate';
 import { TypeFilter } from '@/lib/transactionTypeFilter';
 import functionUrls from '../../backend/func2url.json';
 import { resyncGateway } from '@/lib/gatewayResync';
-
-interface IntegrationRow {
-  id: number;
-  integration_name: string;
-  provider_slug: string;
-  status: string;
-}
 
 interface TransactionsPageProps {
   initialDateFilter?: DateFilter | null;
@@ -39,9 +31,6 @@ const TransactionsPage = ({ initialDateFilter = null, initialTypeFilter = null, 
   const [showUnmatchedOnly, setShowUnmatchedOnly] = useState(initialUnmatchedOnly);
   const [dateFilter, setDateFilter] = useState<DateFilter | null>(initialDateFilter);
   const [typeFilter, setTypeFilter] = useState<TransactionType[]>(initialTypeFilter?.types ?? []);
-  const [ecomkassaIntegrations, setEcomkassaIntegrations] = useState<{ id: number; name: string }[]>([]);
-  const [ofdIntegrations, setOfdIntegrations] = useState<{ id: number; name: string }[]>([]);
-  const [bankIntegrations, setBankIntegrations] = useState<{ id: number; name: string }[]>([]);
   const [selectedTxByKey, setSelectedTxByKey] = useState<Map<string, Transaction>>(new Map());
   const [isLinking, setIsLinking] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -50,7 +39,7 @@ const TransactionsPage = ({ initialDateFilter = null, initialTypeFilter = null, 
   const { toast } = useToast();
   const { currentCompany, cronEnabled } = useAuth();
   const companyId = currentCompany?.id;
-  const { openDialog, completedTick, phase: backfillPhase } = useBackfill();
+  const { completedTick } = useBackfill();
 
   const feed = useTransactionsFeed(
     companyId,
@@ -92,35 +81,6 @@ const TransactionsPage = ({ initialDateFilter = null, initialTypeFilter = null, 
     }
   };
 
-  // Список интеграций, доступных для дозагрузки (касса Екомкасса, ОФД,
-  // расчётные счета) - вынесено в отдельную функцию, а не только в useEffect
-  // при монтировании: только что подключённый банк (или ещё не завершённая
-  // настройка - выбор счёта после ввода JWT-токена происходит отдельным
-  // шагом) мог не попасть в список, загруженный раньше. Обновляем его заново
-  // перед каждым открытием диалога дозагрузки (см. openBackfillDialog), чтобы
-  // пользователь всегда видел актуальный набор источников.
-  const fetchBackfillSources = () => {
-    if (!companyId) return;
-    fetch(`${functionUrls['integrations-list']}?company_id=${companyId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        const integrations: IntegrationRow[] = data.user_integrations || [];
-        const pick = (slugs: string[]) =>
-          integrations
-            .filter((i) => slugs.includes(i.provider_slug) && i.status === 'active')
-            .map((i) => ({ id: i.id, name: i.integration_name }));
-        setEcomkassaIntegrations(pick(['ecomkassa']));
-        setOfdIntegrations(pick(['ofdru']));
-        setBankIntegrations(pick(['tbank_account', 'tochka_account']));
-      })
-      .catch(() => {});
-  };
-
-  const openBackfillDialog = () => {
-    fetchBackfillSources();
-    openDialog();
-  };
-
   useEffect(() => {
     if (!companyId) return;
 
@@ -129,15 +89,11 @@ const TransactionsPage = ({ initialDateFilter = null, initialTypeFilter = null, 
         fetchTransactions();
       }
     });
-
-    fetchBackfillSources();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
-  // completedTick растёт в BackfillContext каждый раз, когда фоновая дозагрузка
-  // (запущенная из BackfillDialog) завершается - в т.ч. если пользователь в
-  // этот момент ушёл со страницы «Транзакции» и вернулся позже. Список должен
-  // подхватить новые данные при каждом таком завершении.
+  // Дозагрузка запускается со страницы «События»; когда она завершается,
+  // реестр транзакций тоже подхватывает новые данные.
   const isFirstCompletedTick = completedTick === 0;
   useEffect(() => {
     if (isFirstCompletedTick) return;
@@ -307,9 +263,7 @@ const TransactionsPage = ({ initialDateFilter = null, initialTypeFilter = null, 
   return (
     <div className="space-y-6 animate-fade-in">
       <TransactionsPageHeader
-        backfillPhase={backfillPhase}
         isRefreshing={isRefreshing}
-        onOpenBackfill={openBackfillDialog}
         onRefresh={fetchTransactions}
         onExport={handleExport}
         isExporting={isExporting}
@@ -358,12 +312,6 @@ const TransactionsPage = ({ initialDateFilter = null, initialTypeFilter = null, 
         onOpenChange={setShowDeleteConfirm}
         onConfirm={handleDeleteConfirmed}
         isDeleting={isDeleting}
-      />
-
-      <BackfillDialog
-        ecomkassaIntegrations={ecomkassaIntegrations}
-        ofdIntegrations={ofdIntegrations}
-        bankIntegrations={bankIntegrations}
       />
     </div>
   );

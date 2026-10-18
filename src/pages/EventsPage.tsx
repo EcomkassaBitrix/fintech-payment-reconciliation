@@ -12,8 +12,23 @@ import EventDetailsDialog from '@/components/events/EventDetailsDialog';
 import { AppEvent, EventSource } from '@/components/events/eventsTypes';
 import functionUrls from '../../backend/func2url.json';
 import { resyncGateway } from '@/lib/gatewayResync';
+import { useBackfill } from '@/contexts/BackfillContext';
+import BackfillDialog from '@/components/transactions/BackfillDialog';
+
+interface IntegrationRow {
+  id: number;
+  integration_name: string;
+  provider_slug: string;
+  status: string;
+}
+
+type SourceOption = { id: number; name: string };
 
 const EventsPage = () => {
+  const [ecomkassaIntegrations, setEcomkassaIntegrations] = useState<SourceOption[]>([]);
+  const [ofdIntegrations, setOfdIntegrations] = useState<SourceOption[]>([]);
+  const [bankIntegrations, setBankIntegrations] = useState<SourceOption[]>([]);
+  const { openDialog, completedTick, phase: backfillPhase } = useBackfill();
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
@@ -65,6 +80,30 @@ const EventsPage = () => {
     }
   };
 
+  // Список источников для загрузки обновляем перед каждым открытием окна,
+  // чтобы только что подключённая касса/банк сразу появились в списке.
+  const fetchBackfillSources = () => {
+    if (!companyId) return;
+    fetch(`${functionUrls['integrations-list']}?company_id=${companyId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const integrations: IntegrationRow[] = data.user_integrations || [];
+        const pick = (slugs: string[]) =>
+          integrations
+            .filter((i) => slugs.includes(i.provider_slug) && i.status === 'active')
+            .map((i) => ({ id: i.id, name: i.integration_name }));
+        setEcomkassaIntegrations(pick(['ecomkassa']));
+        setOfdIntegrations(pick(['ofdru']));
+        setBankIntegrations(pick(['tbank_account', 'tochka_account']));
+      })
+      .catch(() => {});
+  };
+
+  const openBackfillDialog = () => {
+    fetchBackfillSources();
+    openDialog();
+  };
+
   useEffect(() => {
     if (!companyId) return;
 
@@ -74,8 +113,16 @@ const EventsPage = () => {
       }
     });
 
+    fetchBackfillSources();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
+
+  const isFirstCompletedTick = completedTick === 0;
+  useEffect(() => {
+    if (isFirstCompletedTick) return;
+    fetchEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completedTick]);
 
   const dateKey = dateFilter ? `${dateFilter.from.toDateString()}-${dateFilter.to.toDateString()}` : '';
   useEffect(() => {
@@ -129,26 +176,20 @@ const EventsPage = () => {
         <div>
           <div className="flex items-center justify-between gap-3 mb-2">
             <h2 className="text-2xl sm:text-3xl font-display font-bold text-foreground">События</h2>
-            <Button
-              onClick={fetchEvents}
-              variant="outline"
-              size="icon"
-              className="sm:hidden shrink-0"
-              disabled={isRefreshing}
-              aria-label="Обновить"
-              title="Обновить"
-            >
-              <Icon name="RefreshCw" size={16} className={isRefreshing ? 'animate-spin' : ''} />
-            </Button>
           </div>
           <p className="text-sm text-muted-foreground sm:text-base">
             Все входящие вебхуки и операции по интеграциям компании
           </p>
         </div>
-        <Button onClick={fetchEvents} variant="outline" disabled={isRefreshing} className="hidden sm:inline-flex shrink-0">
-          <Icon name="RefreshCw" size={16} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Обновить
-        </Button>
+        <div className="grid grid-cols-[1fr_auto] gap-2 sm:flex sm:items-center shrink-0">
+          <Button onClick={openBackfillDialog} variant="outline" className="gap-2">
+            <Icon name={backfillPhase === 'running' ? 'Loader2' : 'Download'} size={16} className={backfillPhase === 'running' ? 'animate-spin' : ''} />
+            {backfillPhase === 'running' ? 'Загрузка идёт…' : 'Загрузить'}
+          </Button>
+          <Button onClick={fetchEvents} variant="outline" size="icon" disabled={isRefreshing} aria-label="Обновить" title="Обновить">
+            <Icon name="RefreshCw" size={16} className={isRefreshing ? 'animate-spin' : ''} />
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -178,6 +219,12 @@ const EventsPage = () => {
         open={showDetails}
         onOpenChange={setShowDetails}
         event={selectedEvent}
+      />
+
+      <BackfillDialog
+        ecomkassaIntegrations={ecomkassaIntegrations}
+        ofdIntegrations={ofdIntegrations}
+        bankIntegrations={bankIntegrations}
       />
     </div>
   );
