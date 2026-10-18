@@ -38,10 +38,7 @@
   "roles-list": "https://functions.poehali.dev/25c45926-ca91-47e5-a83b-3e989bfd76dc",
   "ofd-fetch-receipts": "https://functions.poehali.dev/c7fad594-b60b-47fb-8f73-31b629f1e0a2",
   "webhook-logs": "https://functions.poehali.dev/9987ee55-a2c0-4639-8a6a-240dbe6c9c22",
-  "integrations-update": "https://functions.poehali.dev/360f393a-72e4-4056-9fcf-7e0abd345e79",
-  "integrations-delete": "https://functions.poehali.dev/9600d197-8da9-45d5-80b0-5675164fc1f4",
   "webhook-receive": "https://functions.poehali.dev/a923b457-57a6-4eb2-b566-9a9d65cb04e8",
-  "integrations-create": "https://functions.poehali.dev/d8b73781-e6de-4271-9e37-dc0340c5ffdb",
   "integrations-list": "https://functions.poehali.dev/6d48c29d-7470-4579-a202-ad00aae1abc3",
   "send-message": "https://functions.poehali.dev/a00f2a10-012a-4a96-9d0c-816207cb2726"
 }

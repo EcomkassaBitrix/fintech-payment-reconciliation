@@ -1,7 +1,7 @@
 {
   "tests": [
     {
-      "name": "Без входа доступ закрыт",
+      "name": "Без входа доступ закрыт (GET)",
       "method": "GET",
       "path": "/?company_id=1",
       "expectedStatus": 401,
@@ -11,11 +11,116 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Чужая/поддельная сессия не принимается",
+      "name": "Чужая/поддельная сессия не принимается (GET)",
       "method": "GET",
       "path": "/?company_id=1",
       "headers": {
         "X-Session-Id": "fake-session-token"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (POST)",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "company_id": 1,
+        "provider_slug": "no_such_provider",
+        "integration_name": "X"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (POST)",
+      "method": "POST",
+      "path": "/",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "body": {
+        "company_id": 1,
+        "provider_slug": "no_such_provider",
+        "integration_name": "X"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (PUT)",
+      "method": "PUT",
+      "path": "/",
+      "body": {
+        "integration_id": 12,
+        "company_id": 1,
+        "integration_name": "Updated name",
+        "config": {
+          "terminal_id": "123",
+          "terminal_password": "pass"
+        }
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (PUT)",
+      "method": "PUT",
+      "path": "/",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "body": {
+        "integration_id": 12,
+        "company_id": 1,
+        "integration_name": "Updated name",
+        "config": {
+          "terminal_id": "123",
+          "terminal_password": "pass"
+        }
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Без входа доступ закрыт (DELETE)",
+      "method": "DELETE",
+      "path": "/",
+      "body": {
+        "integration_id": 99999,
+        "company_id": 1
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Чужая/поддельная сессия не принимается (DELETE)",
+      "method": "DELETE",
+      "path": "/",
+      "headers": {
+        "X-Session-Id": "fake-session-token"
+      },
+      "body": {
+        "integration_id": 99999,
+        "company_id": 1
       },
       "expectedStatus": 401,
       "expectedBody": {

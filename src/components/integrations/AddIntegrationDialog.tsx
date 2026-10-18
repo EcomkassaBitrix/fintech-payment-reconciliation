@@ -125,7 +125,7 @@ const AddIntegrationDialog = ({
           : undefined;
 
       if (editingIntegration) {
-        const response = await fetch(functionUrls['integrations-update'], {
+        const response = await fetch(functionUrls['integrations-list'], {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -151,7 +151,7 @@ const AddIntegrationDialog = ({
           });
         }
       } else {
-        const response = await fetch(functionUrls['integrations-create'], {
+        const response = await fetch(functionUrls['integrations-list'], {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -20,7 +20,7 @@ const HiddenIntegrationsBlock = ({ items, companyId, formatDate, onRestored }: P
   const restore = async (item: UserIntegration) => {
     setBusy(item.id);
     try {
-      const res = await fetch(functionUrls['integrations-update'], {
+      const res = await fetch(functionUrls['integrations-list'], {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'restore_hidden', integration_id: item.id, company_id: companyId })

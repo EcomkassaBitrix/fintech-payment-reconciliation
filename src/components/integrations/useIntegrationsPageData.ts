@@ -94,7 +94,7 @@ export const useIntegrationsPageData = () => {
     if (!deletingIntegration) return;
 
     try {
-      const response = await fetch(functionUrls['integrations-delete'], {
+      const response = await fetch(functionUrls['integrations-list'], {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ integration_id: deletingIntegration.id, company_id: companyId })
@@ -130,7 +130,7 @@ export const useIntegrationsPageData = () => {
     setTogglingId(integration.id);
     setUserIntegrations((prev) => prev.map((i) => (i.id === integration.id ? { ...i, status } : i)));
     try {
-      const res = await fetch(functionUrls['integrations-update'], {
+      const res = await fetch(functionUrls['integrations-list'], {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ integration_id: integration.id, company_id: companyId, status })
