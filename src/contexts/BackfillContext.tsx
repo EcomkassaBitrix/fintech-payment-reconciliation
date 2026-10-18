@@ -29,7 +29,7 @@ interface StartConfig {
   typeStatuses?: Record<string, string[]>;
   hasOfd: boolean;
   bankIntegrations: BankIntegration[];
-  alfabankIntegrations?: (BankIntegration & { statuses: string[] })[];
+  acquiringIntegrations?: (BankIntegration & { statuses: string[] })[];
   ecomkassaNames?: string[];
   ofdNames?: string[];
 }
@@ -222,16 +222,18 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Альфа-Банк: заказы за период постранично (по 200), результат - в той же строке, что и банки.
-  const runAlfabankBackfill = useCallback(async (
+  // Интернет-эквайринг (Альфа-Банк, ЮKassa, Точка, CloudPayments): платежи за период
+  // постранично по курсору сервера, результат - в той же строке, что и банки.
+  const runAcquiringBackfill = useCallback(async (
     companyIdArg: number, integration: BankIntegration & { statuses: string[] }, from: Date, to: Date
   ) => {
-    let page = 0;
+    let cursor: Record<string, unknown> | null = null;
     let inserted = 0;
+    let found = 0;
     let attempts = 0;
     try {
       for (;;) {
-        let data: { success?: boolean; error?: string; total?: number; processed?: number; inserted?: number; next_page?: number; done?: boolean } | null = null;
+        let data: { success?: boolean; error?: string; found?: number; inserted?: number; next_cursor?: Record<string, unknown> | null; done?: boolean } | null = null;
         try {
           const res = await fetch(functionUrls['alfabank-fetch-orders'], {
             method: 'POST',
@@ -242,7 +244,7 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
               date_from: from.toISOString(),
               date_to: to.toISOString(),
               statuses: integration.statuses,
-              page
+              cursor
             })
           });
           data = await res.json().catch(() => null);
@@ -264,10 +266,10 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
         }
         attempts = 0;
         inserted += data.inserted ?? 0;
-        const total = data.total ?? 0;
-        setBankResults((prev) => ({ ...prev, [integration.id]: { inserted, total } }));
-        if (data.done) return;
-        page = data.next_page ?? page + 1;
+        found += data.found ?? 0;
+        setBankResults((prev) => ({ ...prev, [integration.id]: { inserted, total: found } }));
+        if (data.done || !data.next_cursor) return;
+        cursor = data.next_cursor;
       }
     } catch {
       setErrors((prev) => [...prev, `${integration.name}: сбой сети, попробуйте ещё раз`]);
@@ -301,8 +303,8 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
     config.bankIntegrations.forEach((bi) => {
       tasks.push(runBankBackfill(bi, config.dateFrom, config.dateTo));
     });
-    (config.alfabankIntegrations || []).forEach((ai) => {
-      tasks.push(runAlfabankBackfill(config.companyId, ai, config.dateFrom, config.dateTo));
+    (config.acquiringIntegrations || []).forEach((ai) => {
+      tasks.push(runAcquiringBackfill(config.companyId, ai, config.dateFrom, config.dateTo));
     });
 
     // .finally здесь гарантированно сработает независимо от того, смонтирован
@@ -312,7 +314,7 @@ export const BackfillProvider = ({ children }: { children: ReactNode }) => {
       setPhase('done');
       setCompletedTick((t) => t + 1);
     });
-  }, [runEcomkassaBackfill, runOfdBackfill, runBankBackfill, runAlfabankBackfill]);
+  }, [runEcomkassaBackfill, runOfdBackfill, runBankBackfill, runAcquiringBackfill]);
 
   const openDialog = useCallback(() => setIsDialogOpen(true), []);
   const closeDialog = useCallback(() => setIsDialogOpen(false), []);
