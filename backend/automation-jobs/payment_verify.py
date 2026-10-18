@@ -28,7 +28,7 @@ def _config(raw: Any) -> Dict[str, Any]:
 
 def _integrations(cur, company_id: int, slug: str) -> List[Tuple[int, str, Dict[str, Any]]]:
     cur.execute(f'''
-        SELECT ui.id, ui.name, ui.config FROM {SCHEMA}.user_integrations ui
+        SELECT ui.id, ui.integration_name, ui.config FROM {SCHEMA}.user_integrations ui
         JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
         WHERE ui.company_id = %s AND p.slug = %s AND ui.status = 'active'
         ORDER BY ui.id
