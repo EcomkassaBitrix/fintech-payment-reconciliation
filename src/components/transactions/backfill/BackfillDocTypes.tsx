@@ -56,6 +56,18 @@ const IntegrationRow = ({ item, chosen, disabled, onChange }: {
   );
 };
 
+const UnavailableRow = ({ name, note }: { name: string; note: string }) => (
+  <div className="flex items-start gap-2 text-muted-foreground">
+    <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-muted-foreground/40 bg-muted">
+      <Icon name="X" size={12} />
+    </div>
+    <div className="text-sm">
+      {name}
+      <div className="text-xs">{note}</div>
+    </div>
+  </div>
+);
+
 const BackfillDocTypes = ({ selection, sources, disabled, onChange }: BackfillDocTypesProps) => {
   const categories = DOC_CATEGORIES
     .map((c) => ({ category: c, items: categoryItems(c, sources) }))
@@ -86,24 +98,14 @@ const BackfillDocTypes = ({ selection, sources, disabled, onChange }: BackfillDo
                 />
               ))}
               {(sources.disabled?.[category.id] || []).map((d) => (
-                <div key={`off-${d.id}`} className="flex items-start gap-2 text-muted-foreground">
-                  <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-muted-foreground/40 bg-muted">
-                    <Icon name="X" size={12} />
-                  </div>
-                  <div className="text-sm">
-                    {d.name}
-                    <div className="text-xs">Интеграция выключена</div>
-                  </div>
-                </div>
+                <UnavailableRow key={`off-${d.id}`} name={d.name} note="Интеграция выключена" />
               ))}
               {category.id === 'payments' && sources.webhookOnly.map((w) => (
-                <div key={w.id} className="flex items-start gap-2 text-muted-foreground">
-                  <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
-                  <div className="text-sm">
-                    {w.name}
-                    <div className="text-xs">Загрузка за период недоступна — платежи приходят вебхуками</div>
-                  </div>
-                </div>
+                <UnavailableRow
+                  key={`hook-${w.id}`}
+                  name={w.name}
+                  note="Загрузка данных технически невозможна — платежи приходят только по вебхукам"
+                />
               ))}
             </div>
           </div>
