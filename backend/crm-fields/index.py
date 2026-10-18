@@ -161,6 +161,42 @@ def bitrix_categories(params: Dict[str, Any], company_id: int, integration_id: A
     return respond(200, {'success': True, 'categories': categories})
 
 
+def moyklass_payment_types(body: Dict[str, Any]) -> Dict[str, Any]:
+    '''
+    Способы оплаты «Мой Класс» для настройки интеграции: по каким из них создавать чеки.
+    По введённому ключу (новая интеграция) или по ключу уже сохранённой интеграции.
+    '''
+    api_key = str(body.get('api_key') or '').strip()
+    integration_id = body.get('integration_id')
+    company_id = body.get('company_id')
+    if not api_key and integration_id:
+        conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        cur = conn.cursor()
+        try:
+            cur.execute(f'''
+                SELECT ui.config FROM {SCHEMA}.user_integrations ui
+                JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
+                WHERE ui.id = %s AND ui.company_id = %s AND p.slug = 'moyklass'
+            ''', (int(integration_id), int(company_id or 0)))
+            row = cur.fetchone()
+        finally:
+            cur.close()
+            conn.close()
+        if not row:
+            return respond(404, {'error': 'Интеграция не найдена'})
+        config = row[0] if isinstance(row[0], dict) else json.loads(row[0] or '{}')
+        api_key = str(config.get('api_key') or '').strip()
+    if not api_key:
+        return respond(400, {'error': 'Укажите ключ API «Мой Класс»'})
+    token, err = moyklass_api.get_token(api_key)
+    if not token:
+        return respond(400, {'error': err})
+    types, err = moyklass_api.payment_types(token)
+    if err:
+        return respond(502, {'error': err})
+    return respond(200, {'success': True, 'payment_types': types})
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Поля CRM для настройки сценария автоматизации (Битрикс24 и «Мой Класс»).
@@ -168,6 +204,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     GET ?company_id=&categories=1&webhook_url= (или &integration_id=) - воронки сделок Битрикс24
     POST {company_id, integration_id, entity: deal|lead, entity_id, mapping} - проверка сопоставления
          на реальной сделке/лиде: какие значения подставятся и какой получится чек
+    POST {action: "moyklass_payment_types", company_id, api_key | integration_id} - способы оплаты «Мой Класс»
     '''
     denied = guard(event)
     if denied:
@@ -179,6 +216,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     params = event.get('queryStringParameters') or {}
     body = json.loads(event.get('body') or '{}') if method == 'POST' else {}
+    if method == 'POST' and body.get('action') == 'moyklass_payment_types':
+        return moyklass_payment_types(body)
     company_id = params.get('company_id') or body.get('company_id')
     integration_id = params.get('integration_id') or body.get('integration_id')
     if method == 'GET' and params.get('categories') == '1' and company_id:

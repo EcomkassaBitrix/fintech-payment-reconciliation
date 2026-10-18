@@ -1,7 +1,6 @@
 {
   "acquiring-fetch-payments": "https://functions.poehali.dev/ee399377-e11b-4479-8789-fe63306b9bd1",
   "tochka-oauth": "https://functions.poehali.dev/dcd30840-b97f-4048-902d-f6dc8c8a1258",
-  "moyklass-payment-types": "https://functions.poehali.dev/7a0424c4-530a-4d4d-b9cc-07791d3360b3",
   "landing-cases": "https://functions.poehali.dev/e43e4c86-39bc-4229-8d3e-02c7aefa1ec4",
   "subscription-checkout": "https://functions.poehali.dev/51f17dfc-af76-4415-a5cc-329b1ddaaa8c",
   "crm-fields": "https://functions.poehali.dev/412fd5a9-7c44-44d4-ad52-f57bcd916df6",

@@ -17,7 +17,7 @@ interface MoyklassPaymentTypesPickerProps {
   onConfigChange: (config: ConfigState) => void;
 }
 
-const api = (functionUrls as Record<string, string>)['moyklass-payment-types'];
+const api = (functionUrls as Record<string, string>)['crm-fields'];
 
 const MoyklassPaymentTypesPicker = ({ companyId, integrationId, config, onConfigChange }: MoyklassPaymentTypesPickerProps) => {
   const [types, setTypes] = useState<PaymentType[] | null>(null);
@@ -34,7 +34,7 @@ const MoyklassPaymentTypesPicker = ({ companyId, integrationId, config, onConfig
       const res = await fetch(api, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: companyId, api_key: apiKey || undefined, integration_id: apiKey ? undefined : integrationId })
+        body: JSON.stringify({ action: 'moyklass_payment_types', company_id: companyId, api_key: apiKey || undefined, integration_id: apiKey ? undefined : integrationId })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Не удалось получить способы оплаты');
