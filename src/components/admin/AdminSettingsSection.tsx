@@ -12,6 +12,7 @@ import { formatDateTime } from '@/lib/formatDate';
 import functionUrls from '../../../backend/func2url.json';
 import PlatformAdminsCard from './PlatformAdminsCard';
 import CronSourcesList, { CronSource } from './CronSourcesList';
+import AutomationQueueStats, { AutomationQueue } from './AutomationQueueStats';
 
 const api = (functionUrls as Record<string, string>)['platform-settings'];
 
@@ -57,13 +58,16 @@ const AdminSettingsSection = () => {
   const [contactAddress, setContactAddress] = useState('');
   const [messengerUrl, setMessengerUrl] = useState('');
   const [sources, setSources] = useState<CronSource[]>([]);
+  const [queue, setQueue] = useState<AutomationQueue | null>(null);
+  const [queueRefreshing, setQueueRefreshing] = useState(false);
   const [sourceValues, setSourceValues] = useState<Record<string, boolean>>({});
   const [sourceIntervals, setSourceIntervals] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingMessenger, setIsSavingMessenger] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const apply = (data: { settings: PlatformSettings; companies: CompanyOption[]; cron_problems: string[]; cron_interval_min: number; cron_sources?: CronSource[] }) => {
+  const apply = (data: { settings: PlatformSettings; companies: CompanyOption[]; cron_problems: string[]; cron_interval_min: number; cron_sources?: CronSource[]; automation_queue?: AutomationQueue }) => {
+    setQueue(data.automation_queue || null);
     setSettings(data.settings);
     setCompanies(data.companies || []);
     setProblems(data.cron_problems || []);
@@ -88,6 +92,18 @@ const AdminSettingsSection = () => {
     if (res.ok) apply(data);
     else setError(data.error || 'Не удалось загрузить настройки');
   }, [user]);
+
+  const refreshQueue = async () => {
+    if (!user) return;
+    setQueueRefreshing(true);
+    try {
+      const res = await fetch(`${api}?requester_user_id=${user.user_id}`);
+      const data = await res.json();
+      if (res.ok) setQueue(data.automation_queue || null);
+    } finally {
+      setQueueRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -362,6 +378,8 @@ const AdminSettingsSection = () => {
               <span>Сейчас задачи запускаются из открытых кабинетов клиентов. Если кабинет никто не открывает, задачи ждут ближайшего входа.</span>
             </div>
           )}
+
+          {queue && <AutomationQueueStats queue={queue} onRefresh={refreshQueue} refreshing={queueRefreshing} />}
 
           {sources.length > 0 && (
             <CronSourcesList

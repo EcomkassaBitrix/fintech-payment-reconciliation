@@ -6,7 +6,6 @@
   "subscription-checkout": "https://functions.poehali.dev/51f17dfc-af76-4415-a5cc-329b1ddaaa8c",
   "crm-fields": "https://functions.poehali.dev/412fd5a9-7c44-44d4-ad52-f57bcd916df6",
   "admin-tariffs": "https://functions.poehali.dev/de3ea6ca-d3ba-434a-976c-19f67ef5615d",
-  "platform-settings": "https://functions.poehali.dev/9e410f34-57f5-40ff-85f6-ccc802b812d9",
   "notifications": "https://functions.poehali.dev/8f4541fc-6ff8-4816-a954-324e4278743d",
   "admin-action-templates": "https://functions.poehali.dev/89107ba8-1af7-427d-aec9-c913a3d915ef",
   "automation-scenarios": "https://functions.poehali.dev/7650b855-7e7e-4a69-a26a-665c4ce27793",

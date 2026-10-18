@@ -179,6 +179,43 @@ def cron_sources_view(cur, settings: Dict[str, Any]) -> List[Dict[str, Any]]:
 CRON_INTERVAL_MIN = 1
 
 
+def automation_queue_view(cur) -> Dict[str, Any]:
+    '''
+    Состояние очереди автоматизации по всем компаниям для админки:
+    ждут запуска, ждут повтора, в работе, зависли (в работе дольше блокировки), не удалось за сутки.
+    Плюс компании с зависшими / проваленными заданиями - чтобы сразу видеть, где проблема.
+    '''
+    cur.execute(f'''
+        SELECT
+            COUNT(*) FILTER (WHERE status = 'new' AND next_attempt_at <= NOW()),
+            COUNT(*) FILTER (WHERE status = 'error'),
+            COUNT(*) FILTER (WHERE status = 'processing' AND locked_until >= NOW()),
+            COUNT(*) FILTER (WHERE status = 'processing' AND (locked_until IS NULL OR locked_until < NOW())),
+            COUNT(*) FILTER (WHERE status = 'failed' AND updated_at > NOW() - INTERVAL '1 day'),
+            MIN(next_attempt_at) FILTER (WHERE status IN ('new', 'error'))
+        FROM {SCHEMA}.automation_jobs
+        WHERE status IN ('new', 'error', 'processing', 'failed')
+    ''')
+    r = cur.fetchone()
+    cur.execute(f'''
+        SELECT c.id, c.name,
+               COUNT(*) FILTER (WHERE j.status = 'processing' AND (j.locked_until IS NULL OR j.locked_until < NOW())),
+               COUNT(*) FILTER (WHERE j.status = 'failed' AND j.updated_at > NOW() - INTERVAL '1 day'),
+               COUNT(*) FILTER (WHERE j.status = 'error')
+        FROM {SCHEMA}.automation_jobs j
+        JOIN {SCHEMA}.companies c ON c.id = j.company_id
+        WHERE j.status = 'processing' AND (j.locked_until IS NULL OR j.locked_until < NOW())
+           OR j.status = 'failed' AND j.updated_at > NOW() - INTERVAL '1 day'
+           OR j.status = 'error'
+        GROUP BY c.id, c.name
+        ORDER BY 3 DESC, 4 DESC, 5 DESC
+        LIMIT 10
+    ''')
+    companies = [{'id': x[0], 'name': x[1], 'stuck': x[2], 'failed': x[3], 'retry': x[4]} for x in cur.fetchall()]
+    return {'waiting': r[0], 'retry': r[1], 'processing': r[2], 'stuck': r[3], 'failed_day': r[4],
+            'oldest_due': r[5].isoformat() if r[5] else None, 'companies': companies}
+
+
 def respond(status: int, payload: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'statusCode': status,
@@ -909,7 +946,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'companies': companies,
             'cron_interval_min': CRON_INTERVAL_MIN,
             'cron_problems': check_cron(settings),
-            'cron_sources': cron_sources_view(cur, settings)
+            'cron_sources': cron_sources_view(cur, settings),
+            'automation_queue': automation_queue_view(cur)
         })
     finally:
         cur.close()
