@@ -38,7 +38,7 @@ PAYMENT_TYPES = {0, 1, 2}
 # correction_info.type (тег 1173): в шаблонах только самостоятельная коррекция.
 CORRECTION_TYPE = 'self'
 # Откуда брать correction_info.base_date: дата платежа или фиксированная дата из шаблона.
-DATE_SOURCES = {'payment', 'today', 'fixed'}
+DATE_SOURCES = {'payment', 'today', 'fixed', 'client'}
 
 # Агентский чек (теги 1057/1222 - признак агента, ФФД 1.05 и 1.2).
 AGENT_TYPES = {'bank_paying_agent', 'bank_paying_subagent', 'paying_agent', 'paying_subagent',

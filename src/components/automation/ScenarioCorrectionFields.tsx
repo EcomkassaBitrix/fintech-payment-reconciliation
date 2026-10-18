@@ -9,16 +9,27 @@ interface ScenarioCorrectionFieldsProps {
   dateLabel: string;
   askNumber: boolean;
   askName: boolean;
+  askDate: boolean;
   correctionMissing: (string | false)[];
 }
 
-const ScenarioCorrectionFields = ({ cs, setCs, isV5, dateLabel, askNumber, askName, correctionMissing }: ScenarioCorrectionFieldsProps) => (
+const ScenarioCorrectionFields = ({ cs, setCs, isV5, dateLabel, askNumber, askName, askDate, correctionMissing }: ScenarioCorrectionFieldsProps) => (
   <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
     <p className="text-xs text-muted-foreground">
       Самостоятельная коррекция · протокол {isV5 ? 'v5 (ФФД 1.2)' : 'v4 (ФФД 1.05)'}. Дата основания — {dateLabel}. Место расчётов — адрес магазина в Екомкассе.
     </p>
-    {!askNumber && !askName && (
+    {!askNumber && !askName && !askDate && (
       <p className="text-xs text-muted-foreground">Все поля коррекции заданы в шаблоне — заполнять ничего не нужно</p>
+    )}
+    {askDate && (
+      <div className="space-y-1">
+        <Label>{isV5 ? 'Дата корректируемого расчёта' : 'Дата документа-основания'}</Label>
+        <Input
+          type="date"
+          value={cs.correction_base_date || ''}
+          onChange={(e) => setCs({ correction_base_date: e.target.value })}
+        />
+      </div>
     )}
     {askNumber && (
       <div className="space-y-1">

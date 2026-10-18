@@ -88,6 +88,7 @@ export interface ActionTemplateOption {
 export interface CorrectionSettings {
   correction_base_number?: string;
   correction_base_name?: string;
+  correction_base_date?: string;
   payment_address?: string;
   default_email?: string;
   vat?: string;

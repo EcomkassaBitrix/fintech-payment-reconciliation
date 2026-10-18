@@ -130,17 +130,21 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
   const emailInvalid = askEmail && !!cs.default_email?.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cs.default_email.trim());
   const askNumber = isCorrection && !currentTemplate?.correction_base_number;
   const askName = isCorrection && !isV5 && !currentTemplate?.correction_base_name;
+  const askDate = isCorrection && currentTemplate?.correction_date_source === 'client';
   const askCashier = form.action_type === 'create_order' && !!currentTemplate?.auto_deliver && !currentTemplate?.cashier_name;
   const dateLabel =
     currentTemplate?.correction_date_source === 'today'
       ? 'текущая дата'
       : currentTemplate?.correction_date_source === 'fixed'
         ? 'задана в шаблоне'
+        : currentTemplate?.correction_date_source === 'client'
+          ? 'указывается ниже'
         : 'дата платежа';
   const correctionMissing = isCorrection
     ? [
         askNumber && !isV5 && !cs.correction_base_number?.trim() && 'номер основания',
-        askName && !cs.correction_base_name?.trim() && 'описание коррекции'
+        askName && !cs.correction_base_name?.trim() && 'описание коррекции',
+        askDate && !cs.correction_base_date && 'дата основания'
       ].filter(Boolean)
     : [];
   const sourceIntegration = integrations.find((i) => i.id === form.source_integration_id);
@@ -334,6 +338,7 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
                 dateLabel={dateLabel}
                 askNumber={askNumber}
                 askName={askName}
+                askDate={askDate}
                 correctionMissing={correctionMissing}
               />
             </ScenarioStep>

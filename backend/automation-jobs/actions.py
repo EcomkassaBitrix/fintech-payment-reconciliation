@@ -76,7 +76,9 @@ def correction_info(template: Dict[str, Any], data: Dict[str, Any]) -> Tuple[Opt
         return None, ''
     if template.get('correction_date_source') == 'today':
         base_date = datetime.now(timezone(timedelta(hours=3))).date()
-    elif template.get('correction_date_source') == 'fixed' and template.get('correction_base_date'):
+    elif template.get('correction_date_source') == 'client' and not template.get('correction_base_date'):
+        return None, 'Не указана дата документа-основания коррекции - заполните в сценарии'
+    elif template.get('correction_date_source') in ('fixed', 'client') and template.get('correction_base_date'):
         base = template['correction_base_date']
         base_date = base if isinstance(base, date) else datetime.strptime(str(base)[:10], '%Y-%m-%d').date()
     else:

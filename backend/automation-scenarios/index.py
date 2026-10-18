@@ -105,6 +105,8 @@ def validate(cur, company_id: int, body: Dict[str, Any]) -> Optional[str]:
                 return 'Укажите номер документа-основания коррекции (обязателен для протокола v4)'
             if not str(template[7] or cs.get('correction_base_name') or '').strip():
                 return 'Укажите описание коррекции (обязательно для протокола v4)'
+        if template[5] == 'client' and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(cs.get('correction_base_date') or '').strip()):
+            return 'Укажите дату документа-основания коррекции'
     if template[3] == 'agent':
         agent, error = clean_agent((body.get('correction_settings') or {}).get('agent')
                                    if isinstance(body.get('correction_settings'), dict) else None)
@@ -196,7 +198,7 @@ def _match_integration(cur, company_id: int, src: Dict[str, Any]) -> Optional[in
     return rows[0][0] if rows and not url else None
 
 
-CORRECTION_KEYS = ('correction_base_number', 'correction_base_name', 'default_email', 'cashier_name')
+CORRECTION_KEYS = ('correction_base_number', 'correction_base_name', 'correction_base_date', 'default_email', 'cashier_name')
 SCENARIO_VATS = {'none', 'vat0', 'vat5', 'vat7', 'vat10', 'vat20', 'vat22',
                  'vat105', 'vat107', 'vat110', 'vat120', 'vat122'}
 
