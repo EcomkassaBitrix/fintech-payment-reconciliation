@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatDateTime, DEFAULT_TIMEZONE } from '@/lib/formatDate';
 import { transactionTypeConfig } from './EventsTable';
 import { ofdFnsStatusLabel, ofdFnsStatusColorClass } from '@/lib/ofdFnsStatus';
+import PendingInvoiceCheck from './PendingInvoiceCheck';
 
 interface EventDetailsDialogProps {
   open: boolean;
@@ -79,6 +80,13 @@ const EventDetailsDialog = ({ open, onOpenChange, event }: EventDetailsDialogPro
               </Badge>
             </div>
           </div>
+
+          {event.event_type === 'ecomkassa_pending_invoice' && event.event_number && currentCompany?.id && (
+            <>
+              <Separator />
+              <PendingInvoiceCheck key={event.id} companyId={currentCompany.id} invoiceUuid={event.event_number} />
+            </>
+          )}
 
           <Separator />
 

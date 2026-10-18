@@ -7,6 +7,7 @@ import psycopg2
 from typing import Dict, Any, List
 
 from preparer import prepare, retry_delay, log
+import payment_verify
 from actions import ACTIONS
 from cron_report import record_cron_run
 from auth_guard import guard, internal_headers
@@ -448,6 +449,20 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 log(cur, body['job_id'], 'info', 'Повтор запущен вручную')
                 conn.commit()
                 return respond(200, {'success': True, 'processed': run(cur, conn, job_id=body['job_id'])})
+            if action == 'check_invoice':
+                # Кнопка «Проверить оплату сейчас» в «Событиях»: только спрашиваем банк и показываем
+                # ответ - транзакцию не создаём и чек не пробиваем (это делает сценарий «Расхождение»).
+                if not body.get('company_id') or not body.get('invoice_uuid'):
+                    return respond(400, {'error': 'company_id and invoice_uuid required'})
+                cur.execute(f'''
+                    SELECT invoice_uuid FROM {SCHEMA}.ecomkassa_pending_invoices
+                    WHERE company_id = %s AND invoice_uuid = %s
+                ''', (body['company_id'], str(body['invoice_uuid'])))
+                if not cur.fetchone():
+                    return respond(404, {'error': 'Счёт не найден среди ожидающих оплату'})
+                verdict, message, info = payment_verify.verify_order(cur, body['company_id'], str(body['invoice_uuid']))
+                return respond(200, {'success': True, 'verdict': verdict, 'message': message,
+                                     'amount': info.get('amount'), 'system': info.get('system')})
             return respond(400, {'error': 'Unknown action'})
 
         if method != 'GET':
