@@ -15,17 +15,26 @@ interface MultiSelectFilterButtonProps<T extends string> {
   options: FilterOption<T>[];
   value: T[];
   onChange: (value: T[]) => void;
-  extraToggle?: { label: string; icon: string; checked: boolean; onChange: (checked: boolean) => void };
+  extraToggle?: ExtraToggle | ExtraToggle[];
+}
+
+interface ExtraToggle {
+  label: string;
+  icon: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  iconClassName?: string;
 }
 
 // Пустой выбор = показываются все записи (состояние по умолчанию, без цифры на кнопке).
 function MultiSelectFilterButton<T extends string>({ title, options, value, onChange, extraToggle }: MultiSelectFilterButtonProps<T>) {
   const [open, setOpen] = useState(false);
-  const count = value.length + (extraToggle?.checked ? 1 : 0);
+  const toggles = extraToggle ? (Array.isArray(extraToggle) ? extraToggle : [extraToggle]) : [];
+  const count = value.length + toggles.filter((t) => t.checked).length;
 
   const resetAll = () => {
     onChange([]);
-    extraToggle?.onChange(false);
+    toggles.forEach((t) => t.onChange(false));
   };
 
   const toggle = (item: T) => {
@@ -71,13 +80,15 @@ function MultiSelectFilterButton<T extends string>({ title, options, value, onCh
             </label>
           ))}
         </div>
-        {extraToggle && (
-          <div className="border-t border-border p-2">
-            <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted">
-              <Checkbox checked={extraToggle.checked} onCheckedChange={(c) => extraToggle.onChange(c === true)} />
-              <Icon name={extraToggle.icon} size={14} className="text-destructive" />
-              <span>{extraToggle.label}</span>
-            </label>
+        {toggles.length > 0 && (
+          <div className="border-t border-border p-2 space-y-1">
+            {toggles.map((t) => (
+              <label key={t.label} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted">
+                <Checkbox checked={t.checked} onCheckedChange={(c) => t.onChange(c === true)} />
+                <Icon name={t.icon} size={14} className={t.iconClassName ?? 'text-destructive'} />
+                <span>{t.label}</span>
+              </label>
+            ))}
           </div>
         )}
         <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">

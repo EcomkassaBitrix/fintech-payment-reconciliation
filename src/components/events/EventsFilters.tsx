@@ -12,6 +12,8 @@ interface EventsFiltersProps {
   setSourceFilter: (value: EventSource[]) => void;
   errorsOnly: boolean;
   setErrorsOnly: (value: boolean) => void;
+  pendingOnly: boolean;
+  setPendingOnly: (value: boolean) => void;
 }
 
 const EventsFilters = ({
@@ -22,7 +24,9 @@ const EventsFilters = ({
   sourceFilter,
   setSourceFilter,
   errorsOnly,
-  setErrorsOnly
+  setErrorsOnly,
+  pendingOnly,
+  setPendingOnly
 }: EventsFiltersProps) => {
   return (
     <div className="flex items-center gap-3 pl-0.5 pr-0.5 pt-2 pb-0.5 sm:pr-2">
@@ -38,7 +42,13 @@ const EventsFilters = ({
           options={EVENT_SOURCE_OPTIONS}
           value={sourceFilter}
           onChange={setSourceFilter}
-          extraToggle={{ label: 'Только ошибки', icon: 'CircleAlert', checked: errorsOnly, onChange: setErrorsOnly }}
+          extraToggle={[
+            { label: 'Только ошибки', icon: 'CircleAlert', checked: errorsOnly, onChange: setErrorsOnly },
+            {
+              label: 'Только ожидают оплату', icon: 'Hourglass', checked: pendingOnly, onChange: setPendingOnly,
+              iconClassName: 'text-muted-foreground'
+            }
+          ]}
         />
         <DateRangeFilter
           value={dateFilter}
@@ -47,6 +57,7 @@ const EventsFilters = ({
             setDateFilter(null);
             setSourceFilter([]);
             setErrorsOnly(false);
+            setPendingOnly(false);
           }}
         />
       </div>

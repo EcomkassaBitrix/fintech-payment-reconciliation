@@ -97,7 +97,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Args: company_id (обязателен), integration_id, provider_slug, payment_provider, limit, offset,
     date_from/date_to (YYYY-MM-DD, день события в часовом поясе компании),
     sources (через запятую: acquiring,kassa,ofd,bank,crm), errors_only=1 (только
-    события с ошибкой, в т.ч. в истории вебхуков) - опционально.
+    события с ошибкой, в т.ч. в истории вебхуков), pending_only=1 (только счета
+    Екомкассы «ожидает оплату») - опционально.
     payment_provider - дискриминатор конкретной платёжной системы внутри шлюза
     Екомкассы (invoice_payload.provider из report(), например "ЮKassa") - у одной
     кассы может быть подключено больше 10 видов оплат, фильтр сужает до одного.
@@ -147,7 +148,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     has_date_filter = bool(date_from or date_to)
     sources_filter = {x for x in (params.get('sources') or '').split(',') if x}
     errors_only = params.get('errors_only') == '1'
-    needs_full_scan = has_date_filter or bool(sources_filter) or errors_only
+    pending_only = params.get('pending_only') == '1'
+    needs_full_scan = has_date_filter or bool(sources_filter) or errors_only or pending_only
 
     if not company_id:
         return {
@@ -612,6 +614,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             events = [e for e in events if event_source_category(e) in sources_filter]
         if errors_only:
             events = [e for e in events if event_has_error(e)]
+        if pending_only:
+            events = [e for e in events if e.get('event_type') == 'ecomkassa_pending_invoice']
 
         events.sort(key=lambda e: e['created_at'] or '', reverse=True)
         events = events[:limit]
