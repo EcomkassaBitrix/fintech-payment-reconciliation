@@ -218,6 +218,21 @@ def run_action(cur, job: Dict[str, Any], scenario: Dict[str, Any], data: Dict[st
     action = ACTIONS.get(scenario['action_type'])
     if not action:
         return 'ready'
+    if job.get('id'):
+        # Касса уже пробила чек по этому заданию (прошлая попытка прервалась после отправки) - не повторяем.
+        cur.execute(f'''
+            SELECT ecom_uuid FROM {SCHEMA}.automation_documents
+            WHERE job_id = %s AND status = 'done' AND ecom_uuid IS NOT NULL LIMIT 1
+        ''', (job['id'],))
+        sent = cur.fetchone()
+        if sent:
+            cur.execute(f'''
+                UPDATE {SCHEMA}.automation_jobs SET status = 'done', step = 'done', last_error = NULL,
+                       locked_until = NULL, updated_at = NOW()
+                WHERE id = %s
+            ''', (job['id'],))
+            log(cur, job['id'], 'info', f'Чек #{sent[0]} уже пробит кассой - задание выполнено')
+            return 'done'
     try:
         status, result, message = action(cur, job, scenario, data)
     except Exception as e:

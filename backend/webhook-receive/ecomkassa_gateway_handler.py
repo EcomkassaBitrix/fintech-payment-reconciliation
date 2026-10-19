@@ -255,6 +255,13 @@ def log_fiscal_result(cur, schema: str, doc_rows, status: str, data: Dict[str, A
             ''', (job_id, level, message, details))
             if status == 'fail':
                 notify_receipt_failed(cur, schema, job_id, message.rsplit(' (', 1)[0], data)
+        if job_id and status == 'done':
+            # Касса пробила чек, а задание из-за сбоя ещё ждёт повтора - закрываем его, повтор не нужен.
+            cur.execute(f'''
+                UPDATE {schema}.automation_jobs SET status = 'done', step = 'done', last_error = NULL,
+                       locked_until = NULL, updated_at = NOW()
+                WHERE id = %s AND step = 'action' AND status IN ('error', 'ready', 'new', 'failed')
+            ''', (job_id,))
 
 
 def link_automation_document(cur, cash_integration_id: int, uid: str, data: Dict[str, Any],
