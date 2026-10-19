@@ -666,7 +666,10 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         where = ['j.company_id = %s']
         args: list = [company_id]
-        if params.get('status'):
+        if params.get('status') == 'failed':
+            # «Не удалось» - и окончательные сбои, и задания в ошибке, ждущие повтора.
+            where.append("j.status IN ('failed', 'error')")
+        elif params.get('status'):
             where.append('j.status = %s')
             args.append(params['status'])
         if params.get('scenario_id'):
