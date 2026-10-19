@@ -34,7 +34,9 @@ const EventsPage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasLoadedOnce = useRef(false);
   const { toast } = useToast();
-  const { currentCompany, cronEnabled, isPlatformAdmin } = useAuth();
+  const { currentCompany, companies, cronEnabled } = useAuth();
+  // Загрузка истории - только админ платформы: в своей компании или у клиента в режиме поддержки.
+  const isPlatformAdmin = Boolean(currentCompany?.support_access || companies.some((c) => c.platform_admin));
   const companyId = currentCompany?.id;
 
   const fetchEvents = async () => {
