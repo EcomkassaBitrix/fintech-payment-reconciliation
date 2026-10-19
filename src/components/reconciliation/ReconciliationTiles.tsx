@@ -64,8 +64,11 @@ const ReconciliationTiles = ({ totals, onTileClick, lockedTiles = {}, onConnectI
   // получает копию от налоговой), поэтому расхождение в штуках красноречивее
   // расхождения в сумме (пропавший/задвоенный чек виден сразу).
   const ofdCount = totals.receipts.ofd_count;
-  const missingReceipts = totals.payments.count > 0 && totals.receipts.count === 0 && !ofdCount;
-  const kassaCountMatchesOfd = ofdCount !== undefined && ofdCount === totals.receipts.count && !missingReceipts;
+  const sameMoney = (a: number, b: number) => Math.abs(a - b) < 0.01;
+  const kassaCountMatchesOfd = ofdCount !== undefined
+    && ofdCount === totals.receipts.count
+    && sameMoney(totals.receipts.ofd_amount ?? 0, totals.receipts.amount)
+    && sameMoney(totals.payments.amount, totals.receipts.amount);
   const bankVsReceipts = bankVsReceiptsLabel(totals.bank.amount, totals.receipts.amount);
 
   const isLocked = (typeKey: TypeFilterKey) => !!lockedTiles[typeKey];
