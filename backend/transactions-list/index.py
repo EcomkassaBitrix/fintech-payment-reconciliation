@@ -457,7 +457,9 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     LEFT JOIN {SCHEMA}.webhook_payments wp ON wp.id = d.payment_row_id AND wp.removed_at IS NULL
                     LEFT JOIN {SCHEMA}.user_integrations pui ON pui.id = wp.integration_id
                     LEFT JOIN {SCHEMA}.integration_providers pp ON pp.id = pui.provider_id
-                    WHERE d.receipt_id = ekr.id AND d.company_id = ekr.company_id
+                    WHERE d.company_id = ekr.company_id
+                      AND (d.receipt_id = ekr.id
+                           OR (d.kassa_integration_id = ekr.integration_id AND d.ecom_uuid = ekr.order_id))
                     ORDER BY d.id DESC LIMIT 1
                 ) ad ON true
                 LEFT JOIN LATERAL (
