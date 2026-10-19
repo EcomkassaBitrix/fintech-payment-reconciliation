@@ -26,6 +26,7 @@ export interface AppEvent {
   raw: any;
   webhook_history?: EventWebhookHistoryItem[];
   origin?: EventOrigin | null;
+  receipt_kind?: string | null;
 }
 export type EventSource = 'acquiring' | 'kassa' | 'ofd' | 'bank' | 'crm';
 

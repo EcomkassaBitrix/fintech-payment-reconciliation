@@ -120,6 +120,12 @@ const EventDetailsDialog = ({ open, onOpenChange, event }: EventDetailsDialogPro
                   {(transactionTypeConfig[event.transaction_type] || transactionTypeConfig.payment).label}
                 </Badge>
               </div>
+              {event.receipt_kind && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Тип чека</p>
+                  <p className="text-sm font-medium">{event.receipt_kind}</p>
+                </div>
+              )}
               <div>
                 <p className="text-sm text-muted-foreground">Тип интеграции</p>
                 <p className="break-words text-sm">{event.provider_type}</p>

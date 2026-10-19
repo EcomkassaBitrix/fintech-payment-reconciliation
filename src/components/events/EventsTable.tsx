@@ -142,6 +142,7 @@ const EventsTable = ({ events, onRowClick }: EventsTableProps) => {
                   <span>{formatDate(event.created_at)}</span>
                   {event.event_number && <span className="font-mono">№ {event.event_number}</span>}
                   {event.payment_provider && <Badge variant="secondary" className="text-[11px]">{event.payment_provider}</Badge>}
+                  {event.receipt_kind && <Badge variant="secondary" className="text-[11px]">{event.receipt_kind}</Badge>}
                 </div>
               </div>
               {hasHistory && isExpanded && (
@@ -240,6 +241,9 @@ const EventsTable = ({ events, onRowClick }: EventsTableProps) => {
                       <div className="text-xs text-muted-foreground mt-1">{event.provider_type}</div>
                       {event.payment_provider && (
                         <Badge variant="secondary" className="mt-1">{event.payment_provider}</Badge>
+                      )}
+                      {event.receipt_kind && (
+                        <Badge variant="secondary" className="mt-1">{event.receipt_kind}</Badge>
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-sm">

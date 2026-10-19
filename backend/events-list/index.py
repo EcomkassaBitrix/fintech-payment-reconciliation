@@ -292,18 +292,43 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 ekr.id, ekr.order_id, COALESCE(ekr.doc_datetime, ekr.created_at) AS event_at,
                 ekr.status, ekr.total_sum,
                 ekr.order_type, ekr.payment_provider, ekr.raw_data,
-                ui.integration_name, ekr.origin
+                ui.integration_name, ekr.origin,
+                COALESCE(ekr.is_correction, ad.operation LIKE '%%correction', false) AS is_corr,
+                CASE WHEN ekr.is_sale IS NOT NULL THEN NOT ekr.is_sale
+                     WHEN om.operation_type IS NOT NULL THEN lower(om.operation_type) LIKE 'refund%%'
+                     WHEN ad.operation IS NOT NULL THEN ad.operation LIKE 'sell_refund%%'
+                     ELSE lower(COALESCE(ekr.raw_data->'payload'->>'operation_type', 'income')) LIKE 'refund%%' END AS is_refund
             FROM {SCHEMA}.ecomkassa_receipts ekr
             JOIN {SCHEMA}.user_integrations ui ON ui.id = ekr.integration_id
+            LEFT JOIN LATERAL (
+                SELECT ofd.operation_type FROM {SCHEMA}.ofd_receipts ofd
+                WHERE ofd.company_id = ekr.company_id AND ofd.removed_at IS NULL
+                  AND ofd.fn_number = (ekr.raw_data->'payload'->>'fn_number')
+                  AND ofd.doc_number = (ekr.raw_data->'payload'->>'fiscal_document_number')
+                LIMIT 1
+            ) om ON true
+            LEFT JOIN LATERAL (
+                SELECT d.operation FROM {SCHEMA}.automation_documents d
+                WHERE d.company_id = ekr.company_id
+                  AND (d.receipt_id = ekr.id OR (d.kassa_integration_id = ekr.integration_id AND d.ecom_uuid = ekr.order_id))
+                ORDER BY d.id DESC LIMIT 1
+            ) ad ON true
             {ekr_where}
             ORDER BY event_at ASC
         ''', ekr_params)
 
         for row in cur.fetchall():
             (ekr_id, order_id, event_at, status, total_sum, order_type, payment_provider_value,
-             raw_data, integration_name, origin) = row
+             raw_data, integration_name, origin, is_corr, is_refund) = row
 
             doc_label = ORDER_TYPE_LABELS.get(order_type, 'Документ')
+            receipt_kind = None
+            if order_type in (None, 'VCHR'):
+                if is_corr:
+                    receipt_kind = 'Чек коррекции возврата прихода' if is_refund else 'Чек коррекции прихода'
+                else:
+                    receipt_kind = 'Чек возврата' if is_refund else 'Чек продажи'
+                doc_label = receipt_kind
             amount_str = f'{float(total_sum):.2f} ₽' if total_sum is not None else ''
             # payment_provider (СБП/ЮKassa и т.п.) - атрибут ПЛАТЕЖА (каким
             # способом оплатили), а не самого чека, поэтому здесь намеренно НЕ
@@ -329,6 +354,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'event_number': str(order_id),
                 'summary': summary,
                 'raw': raw_data,
+                'receipt_kind': receipt_kind,
                 'origin': origin or 'sync'
             })
 
@@ -360,6 +386,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             amount_str = f'{float(total_sum):.2f} ₽' if total_sum is not None else ''
             summary = f'Чек ОФД #{receipt_id} · {operation_type or ""} {amount_str}'.strip()
+            ofd_refund = str(operation_type or '').lower().startswith('refund')
+            ofd_corr = str((raw_data or {}).get('IsCorrection') or '').lower() in ('true', '1') \
+                if isinstance(raw_data, dict) else False
+            if ofd_corr:
+                receipt_kind = 'Чек коррекции возврата прихода' if ofd_refund else 'Чек коррекции прихода'
+            elif str(operation_type or '').lower().startswith('expense') or 'outcome' in str(operation_type or '').lower():
+                receipt_kind = 'Чек расхода'
+            else:
+                receipt_kind = 'Чек возврата' if ofd_refund else 'Чек продажи'
 
             events.append({
                 'id': f'ofd_{ofd_id}',
@@ -369,6 +404,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'provider_type': PROVIDER_TYPE_LABELS.get('ofdru', 'ОФД'),
                 'transaction_type': 'receipt',
                 'integration_name': integration_name,
+                'receipt_kind': receipt_kind,
                 'event_type': 'ofd_receipt',
                 # status здесь - статус ПРОБИТИЯ чека в ФНС (FnsStatus:
                 # Success/Fail), а не тип операции (Income/Expense и т.п.,
