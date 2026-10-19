@@ -95,10 +95,16 @@ def get_receipt_atol(kassa: Dict[str, Any], order_id: str) -> Tuple[Optional[Dic
     GET /api/mobile/v1/orders/:orderId/atol-4 (или atol-5 по протоколу кассы) -
     чек по идентификатору в формате АТОЛ Онлайн: корзина, оплаты, организация, клиент.
     '''
-    fmt = 'atol-5' if kassa['protocol_version'] == 'v5' else 'atol-4'
-    status, data = _call(kassa, 'GET', f'/api/mobile/v1/orders/{order_id}/{fmt}')
-    if status == 200 and isinstance(data, dict) and isinstance(data.get('receipt'), dict):
-        return data, ''
+    formats = ['atol-5', 'atol-4'] if kassa['protocol_version'] == 'v5' else ['atol-4', 'atol-5']
+    status, data = 0, None
+    for fmt in formats:
+        # Документ, созданный в другом формате (например, счёт ФФД 1.1 у кассы на v5),
+        # Екомкасса отдаёт только в «своём» формате, в другом отвечает 404.
+        status, data = _call(kassa, 'GET', f'/api/mobile/v1/orders/{order_id}/{fmt}')
+        if status == 200 and isinstance(data, dict) and isinstance(data.get('receipt'), dict):
+            return data, ''
+        if status != 404:
+            break
     return None, f'Екомкасса не отдала чек #{order_id} ({status}: {str(data)[:200]})'
 
 

@@ -55,10 +55,18 @@ def fill_receipt_emails(cur, token: str, protocol_version: str, company_id: int,
     rows = cur.fetchall()
     if not rows:
         return 0
-    fmt = 'atol-5' if protocol_version == 'v5' else 'atol-4'
+    formats = ['atol-5', 'atol-4'] if protocol_version == 'v5' else ['atol-4', 'atol-5']
+
+    def fetch(order_id):
+        # Документ в «чужом» формате (ФФД 1.1 у кассы на v5) Екомкасса отдаёт только в своём.
+        for fmt in formats:
+            doc = _get_json(f'{ECOMKASSA_BASE_URL}/api/mobile/v1/orders/{order_id}/{fmt}', {'Token': token})
+            if isinstance(doc, dict) and isinstance(doc.get('receipt'), dict):
+                return doc
+        return None
+
     with ThreadPoolExecutor(max_workers=len(rows)) as pool:
-        docs = list(pool.map(
-            lambda r: _get_json(f'{ECOMKASSA_BASE_URL}/api/mobile/v1/orders/{r[1]}/{fmt}', {'Token': token}), rows))
+        docs = list(pool.map(lambda r: fetch(r[1]), rows))
     filled = 0
     for (receipt_id, _), doc in zip(rows, docs):
         if not isinstance(doc, dict):
