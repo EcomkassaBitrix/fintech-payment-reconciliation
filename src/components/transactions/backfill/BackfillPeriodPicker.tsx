@@ -36,14 +36,26 @@ const BackfillPeriodPicker = ({ dateRange, dateFrom, dateTo, maxDate, disabled, 
           <Calendar
             mode="range"
             selected={dateRange}
-            onSelect={(range) => {
-              if (!range?.from) return;
-              // react-day-picker сбрасывает диапазон до {from, to: undefined}
-              // при начале нового выбора - всегда пишем то, что вернул picker,
-              // без подмешивания предыдущего to (иначе период "с X по X" не
-              // выбирается и календарь не закрывается).
-              onChange({ from: range.from, to: range.to });
-              if (range.to) setCalendarOpen(false);
+            onSelect={(_range, day) => {
+              // Свой выбор вместо встроенного: первый клик всегда начинает новый период,
+              // второй - завершает его (тот же день = период в один день).
+              if (!day) return;
+              const start = new Date(day);
+              start.setHours(0, 0, 0, 0);
+              if (!dateRange.from || dateRange.to) {
+                onChange({ from: start, to: undefined });
+                return;
+              }
+              const end = new Date(day);
+              end.setHours(23, 59, 59, 999);
+              if (start < dateRange.from) {
+                const prevEnd = new Date(dateRange.from);
+                prevEnd.setHours(23, 59, 59, 999);
+                onChange({ from: start, to: prevEnd });
+              } else {
+                onChange({ from: dateRange.from, to: end });
+              }
+              setCalendarOpen(false);
             }}
             disabled={{ after: maxDate }}
             numberOfMonths={isMobile ? 1 : 2}
