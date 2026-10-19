@@ -14,7 +14,14 @@ import { TYPE_FILTERS, TypeFilterKey } from '@/lib/transactionTypeFilter';
 
 interface ReconciliationTotals {
   payments: { amount: number; count: number };
-  receipts: { amount: number; count: number; ofd_amount?: number; ofd_count?: number };
+  receipts: {
+    amount: number;
+    count: number;
+    ofd_amount?: number;
+    ofd_count?: number;
+    correction_amount?: number;
+    correction_count?: number;
+  };
   bank: { amount: number; raw_amount: number; commission_amount: number; count: number };
 }
 
@@ -142,8 +149,18 @@ const ReconciliationTiles = ({ totals, onTileClick, lockedTiles = {}, onConnectI
             {formatMoney(totals.receipts.amount)}
           </div>
           {ofdCount !== undefined && (
-            <p className={`text-xs mt-1 ${kassaCountMatchesOfd ? 'text-success' : 'text-destructive'}`}>
-              {totals.receipts.count} в кассе и {ofdCount} в ОФД
+            <p className="text-xs mt-1 truncate">
+              <span className={kassaCountMatchesOfd ? 'text-success' : 'text-destructive'}>
+                {totals.receipts.count} в кассе и {ofdCount} в ОФД
+              </span>
+              {!!totals.receipts.correction_count && (
+                <span
+                  className="text-muted-foreground"
+                  title={`Чеки коррекции, пробитые позже и учтённые в день оплаты: ${totals.receipts.correction_count} на ${formatMoney(totals.receipts.correction_amount || 0)}`}
+                >
+                  {' · '}коррекций {totals.receipts.correction_count}
+                </span>
+              )}
             </p>
           )}
         </CardContent>

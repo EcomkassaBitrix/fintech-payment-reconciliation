@@ -351,7 +351,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 COALESCE(om.operation_type,
                          CASE WHEN adv.operation LIKE 'sell_refund%%' THEN 'Refund Income' END,
                          ekr.raw_data->'payload'->>'operation_type') AS linked_ofd_status,
-                COALESCE(adv.advance_sum, 0) AS advance_sum
+                COALESCE(adv.advance_sum, 0) AS advance_sum,
+                corr.paid_at IS NOT NULL AS is_late_correction
             FROM {SCHEMA}.ecomkassa_receipts ekr
             LEFT JOIN LATERAL (
                 SELECT ofd.operation_type
@@ -399,7 +400,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         advance_offset_total = 0.0
         advance_offset_count = 0
-        for receipt_date, total_sum, linked_ofd_status, advance_sum in receipts_rows:
+        corrections_total = 0.0
+        corrections_count = 0
+        for receipt_date, total_sum, linked_ofd_status, advance_sum, is_late_correction in receipts_rows:
             amount_f = float(total_sum) if total_sum else 0.0
             advance_f = min(float(advance_sum or 0), amount_f)
             if advance_f > 0:
@@ -411,6 +414,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             signed = amount_f * classify_receipt_sign(linked_ofd_status)
             receipts_total += signed
             receipts_count += 1
+            if is_late_correction:
+                corrections_total += signed
+                corrections_count += 1
             if receipt_date:
                 day_key = receipt_date.isoformat()
                 daily_receipts[day_key] = daily_receipts.get(day_key, 0.0) + signed
@@ -641,7 +647,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'amount': receipts_total,
                         'count': receipts_count,
                         'ofd_amount': round(receipts_ofd_total, 2),
-                        'ofd_count': receipts_ofd_count
+                        'ofd_count': receipts_ofd_count,
+                        'correction_amount': round(corrections_total, 2),
+                        'correction_count': corrections_count
                     },
                     'bank': {
                         'amount': bank_total,
