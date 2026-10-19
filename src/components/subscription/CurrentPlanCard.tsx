@@ -44,10 +44,17 @@ const CurrentPlanCard = ({ tariffName, status, isTrial, endDate, left, canPay, c
       </span>
       {canPay && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={onChangePlan}>
-            <Icon name="ArrowLeftRight" size={16} className="mr-2" />
-            {isTrial || !currentPaid ? 'Выбрать тариф' : 'Сменить тариф'}
-          </Button>
+          {left !== null && left <= 0 && (isTrial || !currentPaid) ? (
+            <Button size="sm" onClick={onChangePlan}>
+              <Icon name="CreditCard" size={16} className="mr-2" />
+              Оплатить подписку
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={onChangePlan}>
+              <Icon name="ArrowLeftRight" size={16} className="mr-2" />
+              {isTrial || !currentPaid ? 'Выбрать тариф' : 'Сменить тариф'}
+            </Button>
+          )}
           {currentPaid && !isTrial && (
             <Button size="sm" onClick={() => onRenew(currentPaid.slug)}>
               <Icon name="RefreshCw" size={16} className="mr-2" />
