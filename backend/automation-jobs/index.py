@@ -265,7 +265,7 @@ def enqueue_discrepancies(cur, conn, company_id) -> int:
         try:
             created += enqueue_pending_invoices(cur, conn, company_id, invoice_scenarios)
         except Exception as e:
-            conn.rollback()
+            safe_rollback(conn)
             print(f'pending invoices scan failed: {e}')
     if not scenarios:
         return created
@@ -300,6 +300,9 @@ def enqueue_discrepancies(cur, conn, company_id) -> int:
 # старые брошенные счета - одна проверка.
 INVOICE_RECHECK_HOURS = 6
 INVOICE_RECHECK_MAX_AGE_DAYS = 3
+# Сколько новых счетов ставим в очередь за один проход: остальные - в следующих проходах,
+# чтобы большая дозагрузка не перегружала базу всплеском запросов.
+INVOICE_SCAN_LIMIT = 10
 
 
 def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
@@ -320,28 +323,36 @@ def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
     now_utc = datetime.utcnow()
     created = 0
     for scenario_id, delay in scenarios:
+        # Все задания сценария по счетам - одним запросом, чтобы не дёргать базу на каждый счёт.
+        cur.execute(f'''
+            SELECT payload->>'invoice_uuid', id, status, updated_at < NOW() - INTERVAL '{INVOICE_RECHECK_HOURS} hours'
+            FROM {SCHEMA}.automation_jobs
+            WHERE scenario_id = %s AND payload->>'invoice_uuid' IS NOT NULL
+        ''', (scenario_id,))
+        known = {r[0]: r[1:] for r in cur.fetchall()}
+        budget = INVOICE_SCAN_LIMIT
         for uid, external_id, amount, updated in pending:
             if updated and updated > now_utc - timedelta(minutes=delay):
                 continue
+            existing = known.get(uid)
+            fresh = updated is None or updated > now_utc - timedelta(days=INVOICE_RECHECK_MAX_AGE_DAYS)
+            if existing and not (existing[1] == 'skipped' and existing[2] and fresh):
+                continue
+            if budget <= 0:
+                break
+            budget -= 1
             payload = {'reason': 'pending_invoice', 'invoice_uuid': uid,
                        'amount': float(amount) if amount is not None else None,
                        'external_id': external_id, 'updated': updated.isoformat() + 'Z' if updated else None}
-            cur.execute(f'''
-                SELECT id, status, updated_at < NOW() - INTERVAL '{INVOICE_RECHECK_HOURS} hours'
-                FROM {SCHEMA}.automation_jobs WHERE scenario_id = %s AND payload->>'invoice_uuid' = %s
-            ''', (scenario_id, uid))
-            existing = cur.fetchone()
             if existing:
-                fresh = updated is None or updated > now_utc - timedelta(days=INVOICE_RECHECK_MAX_AGE_DAYS)
-                if existing[1] == 'skipped' and existing[2] and fresh:
-                    cur.execute(f'''
-                        UPDATE {SCHEMA}.automation_jobs SET status = 'new', step = 'prepare', attempts = 0,
-                               next_attempt_at = NOW(), last_error = NULL, updated_at = NOW()
-                        WHERE id = %s AND source_type = 'ecom_invoice'
-                        RETURNING id
-                    ''', (existing[0],))
-                    if cur.fetchone():
-                        log(cur, existing[0], 'info', f'Счёт {uid} всё ещё ждёт оплату - проверяем снова')
+                cur.execute(f'''
+                    UPDATE {SCHEMA}.automation_jobs SET status = 'new', step = 'prepare', attempts = 0,
+                           next_attempt_at = NOW(), last_error = NULL, updated_at = NOW()
+                    WHERE id = %s AND source_type = 'ecom_invoice'
+                    RETURNING id
+                ''', (existing[0],))
+                if cur.fetchone():
+                    log(cur, existing[0], 'info', f'Счёт {uid} всё ещё ждёт оплату - проверяем снова')
                 continue
             cur.execute(f'''
                 INSERT INTO {SCHEMA}.automation_jobs (company_id, scenario_id, source_type, source_id, payload)
@@ -572,7 +583,7 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     try:
                         enqueue_discrepancies(cur, conn, body['company_id'])
                     except Exception as e:
-                        conn.rollback()
+                        safe_rollback(conn)
                         print(f'discrepancy scan failed: {e}')
                 processed = run(cur, conn, body.get('company_id'), budget_sec=run_budget(context))
                 try:
