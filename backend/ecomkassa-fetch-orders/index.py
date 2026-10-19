@@ -253,6 +253,16 @@ def save_pending_invoice(cur, integration_id: int, company_id: int, item: Dict[s
     uid = str(item.get('orderId') or '')
     if not uid:
         return False
+    # Оплату счёта уже подтвердили в эквайринге (есть наш оплаченный платёж) - Екомкасса
+    # может ещё держать его в «ожидает оплату», но повторно в ожидающие не возвращаем.
+    cur.execute(f'''
+        SELECT 1 FROM {SCHEMA}.webhook_payments
+        WHERE company_id = %s AND order_id = %s AND status = 'CONFIRMED' AND removed_at IS NULL LIMIT 1
+    ''', (company_id, uid))
+    if cur.fetchone():
+        cur.execute(f'DELETE FROM {SCHEMA}.ecomkassa_pending_invoices WHERE company_id = %s AND invoice_uuid = %s',
+                    (company_id, uid))
+        return False
     try:
         updated = datetime.fromisoformat(str(item.get('updated')).replace('Z', '+00:00'))
         updated = updated.astimezone(timezone.utc).replace(tzinfo=None) if updated.tzinfo else updated

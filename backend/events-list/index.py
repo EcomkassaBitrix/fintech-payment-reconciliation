@@ -552,7 +552,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # не платёж: в «Транзакции» не попадают, нужны только сценарию
         # «Висит в ожидании оплаты». Показываем в ленте как событие шлюза.
         if not provider_slug or provider_slug == 'ecomkassa_gateway':
-            pi_where = 'WHERE pi.company_id = %s'
+            pi_where = f'''WHERE pi.company_id = %s AND NOT EXISTS (
+                SELECT 1 FROM {SCHEMA}.webhook_payments wp
+                WHERE wp.company_id = pi.company_id AND wp.order_id = pi.invoice_uuid
+                  AND wp.status = 'CONFIRMED' AND wp.removed_at IS NULL)'''
             pi_params = [company_id]
             if integration_id:
                 pi_where += ' AND pi.integration_id = %s'
