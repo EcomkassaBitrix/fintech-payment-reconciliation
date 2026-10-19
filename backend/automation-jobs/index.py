@@ -87,14 +87,15 @@ def claim_jobs(cur, company_id=None, job_id=None, limit: int = BATCH) -> List[Di
     # после истечения блокировки (2 мин) снова берётся в работу как обычный повтор.
     # Дубля в кассе не будет: заказ уходит с тем же external_id.
     where = ["(j.status IN ('new', 'error') AND j.next_attempt_at <= NOW() "
-             "OR j.status = 'processing' AND j.locked_until < NOW())",
+             "OR j.status = 'processing' AND j.locked_until < NOW() "
+             "OR j.status = 'ready' AND j.step = 'action' AND j.updated_at < NOW() - INTERVAL '2 minutes')",
              '(j.locked_until IS NULL OR j.locked_until < NOW())']
     args: list = []
     if company_id:
         where.append('j.company_id = %s')
         args.append(company_id)
     if job_id:
-        where = ['j.id = %s', "j.status IN ('new', 'error', 'failed', 'processing')",
+        where = ['j.id = %s', "j.status IN ('new', 'error', 'failed', 'processing', 'ready')",
                  '(j.locked_until IS NULL OR j.locked_until < NOW())']
         args = [job_id]
     cur.execute(f'''
@@ -374,7 +375,7 @@ def requeue_after_crash(cur, conn, job: Dict[str, Any], e: Exception) -> str:
             UPDATE {SCHEMA}.automation_jobs SET status = 'error', last_error = %s, locked_until = NULL,
                    attempts = CASE WHEN %s THEN GREATEST(attempts - 1, 0) ELSE attempts END,
                    next_attempt_at = NOW() + (%s || ' minutes')::interval, updated_at = NOW()
-            WHERE id = %s AND status = 'processing'
+            WHERE id = %s AND status IN ('processing', 'ready')
         ''', (message, transient, str(delay), job['id']))
         log(cur, job['id'], 'error', f'{message}. Повтор через {delay} мин')
         return 'error'
@@ -586,6 +587,7 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                            locked_until = NULL, updated_at = NOW()
                     WHERE id = %s AND company_id = %s
                       AND (status IN ('error', 'failed', 'skipped')
+                           OR status = 'ready' AND step = 'action' AND updated_at < NOW() - INTERVAL '2 minutes'
                            OR status = 'processing' AND (locked_until IS NULL OR locked_until < NOW()))
                     RETURNING id
                 ''', (body['job_id'], body['company_id']))
