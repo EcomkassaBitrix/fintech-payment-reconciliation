@@ -486,9 +486,67 @@ def signal_notifications(company_id=None, daily: bool = False):
         pass
 
 
+def linked_jobs(cur, company_id, kind: str, ref: str) -> List[Dict[str, Any]]:
+    '''
+    Задания автоматизации по событию - для блока «Автоматизация» в карточке события/транзакции.
+    kind: payment - номер платежа/заказа (все статусы платежа), payment_row - id строки платежа,
+    receipt - UUID документа Екомкассы (задание его создало или работало по этому счёту),
+    crm - номер сделки/лида, invoice - UUID счёта «ожидает оплату».
+    '''
+    ref = str(ref).strip()
+    if kind == 'payment_row':
+        cur.execute(f'SELECT payment_id, order_id FROM {SCHEMA}.webhook_payments WHERE id = %s AND company_id = %s',
+                    (ref if ref.isdigit() else None, company_id))
+        row = cur.fetchone()
+        if not row:
+            return []
+        kind, ref = 'payment', str(row[1] or row[0])
+    if kind == 'receipt_row':
+        cur.execute(f'SELECT order_id FROM {SCHEMA}.ecomkassa_receipts WHERE id = %s AND company_id = %s',
+                    (ref if ref.isdigit() else None, company_id))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return []
+        kind, ref = 'receipt', str(row[0])
+    if kind == 'payment':
+        cond = f'''(j.source_type = 'payment' AND j.source_id IN (
+                        SELECT id::text FROM {SCHEMA}.webhook_payments
+                        WHERE company_id = %(c)s AND (payment_id = %(r)s OR order_id = %(r)s)))
+                   OR (j.source_type = 'ecom_invoice' AND j.source_id = %(r)s)'''
+    elif kind == 'receipt':
+        cond = f'''j.id IN (SELECT job_id FROM {SCHEMA}.automation_documents
+                            WHERE company_id = %(c)s AND ecom_uuid = %(r)s)
+                   OR (j.source_type = 'ecom_invoice' AND j.source_id = %(r)s)
+                   OR j.payload->>'invoice_uuid' = %(r)s'''
+    elif kind == 'crm':
+        cond = "j.source_type IN ('crm_deal', 'crm_lead') AND j.source_id = %(r)s"
+    elif kind == 'invoice':
+        cond = "(j.source_type = 'ecom_invoice' AND j.source_id = %(r)s) OR j.payload->>'invoice_uuid' = %(r)s"
+    else:
+        return []
+    cur.execute(f'''
+        SELECT j.id, j.scenario_id, s.name, j.status, j.step, j.attempts, j.last_error, j.next_attempt_at,
+               j.created_at, j.updated_at,
+               (SELECT message FROM {SCHEMA}.automation_job_log l WHERE l.job_id = j.id ORDER BY l.id DESC LIMIT 1),
+               (SELECT json_agg(json_build_object('operation', d.operation, 'doc_kind', d.doc_kind, 'uuid', d.ecom_uuid,
+                                                  'status', d.status, 'total', d.total_sum) ORDER BY d.id)
+                FROM {SCHEMA}.automation_documents d WHERE d.job_id = j.id)
+        FROM {SCHEMA}.automation_jobs j
+        JOIN {SCHEMA}.automation_scenarios s ON s.id = j.scenario_id
+        WHERE j.company_id = %(c)s AND ({cond})
+        ORDER BY j.created_at DESC LIMIT 20
+    ''', {'c': company_id, 'r': ref})
+    return [{
+        'id': r[0], 'scenario_id': r[1], 'scenario_name': r[2], 'status': r[3], 'step': r[4], 'attempts': r[5],
+        'last_error': r[6], 'next_attempt_at': r[7], 'created_at': r[8], 'updated_at': r[9],
+        'last_message': r[10], 'documents': r[11] or []
+    } for r in cur.fetchall()]
+
+
 def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Журнал автоматизации и обработчик подготовки данных.
+    GET ?company_id=&for=payment|payment_row|receipt|crm|invoice&ref= - задания по событию
     GET ?company_id=[&status=][&scenario_id=][&limit=] - журнал заданий
     GET ?company_id=&job_id= - задание и его история шагов
     POST {action: "run", company_id?} - обработать задания в очереди (сигнал из
@@ -559,6 +617,9 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         company_id = params.get('company_id')
         if not company_id:
             return respond(400, {'error': 'company_id required'})
+
+        if params.get('for') and params.get('ref'):
+            return respond(200, {'success': True, 'jobs': linked_jobs(cur, company_id, params['for'], params['ref'])})
 
         if params.get('job_id'):
             cur.execute(f'''

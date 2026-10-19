@@ -9,6 +9,15 @@ import { formatDateTime, DEFAULT_TIMEZONE } from '@/lib/formatDate';
 import { transactionTypeConfig } from './EventsTable';
 import { ofdFnsStatusLabel, ofdFnsStatusColorClass } from '@/lib/ofdFnsStatus';
 import PendingInvoiceCheck from './PendingInvoiceCheck';
+import LinkedAutomationBlock, { AutomationRefKind } from '@/components/automation/LinkedAutomationBlock';
+
+const automationRef = (event: AppEvent): { kind: AutomationRefKind; ref: string } | null => {
+  if (event.id.startsWith('paygrp_') && event.event_number) return { kind: 'payment', ref: event.event_number };
+  if (event.id.startsWith('ekr_')) return { kind: 'receipt_row', ref: event.id.slice(4) };
+  if (event.id.startsWith('pinv_') && event.event_number) return { kind: 'invoice', ref: event.event_number };
+  if (event.id.startsWith('crmgrp_') && event.event_number) return { kind: 'crm', ref: event.event_number };
+  return null;
+};
 
 interface EventDetailsDialogProps {
   open: boolean;
@@ -53,6 +62,7 @@ const EventDetailsDialog = ({ open, onOpenChange, event }: EventDetailsDialogPro
   const formatDate = (dateStr: string | null) => formatDateTime(dateStr, timezone, true);
 
   if (!event) return null;
+  const autoRef = automationRef(event);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -85,6 +95,13 @@ const EventDetailsDialog = ({ open, onOpenChange, event }: EventDetailsDialogPro
             <>
               <Separator />
               <PendingInvoiceCheck key={event.id} companyId={currentCompany.id} invoiceUuid={event.event_number} />
+            </>
+          )}
+
+          {autoRef && (
+            <>
+              <Separator />
+              <LinkedAutomationBlock key={event.id} kind={autoRef.kind} refValue={autoRef.ref} />
             </>
           )}
 

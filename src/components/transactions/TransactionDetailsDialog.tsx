@@ -10,6 +10,15 @@ import { formatDateTime as formatDateTimeTz, DEFAULT_TIMEZONE } from '@/lib/form
 import { transactionStatusLabel } from '@/lib/transactionStatus';
 import { getStatusDisplay } from './table/tableHelpers';
 import { getLinkReason, linkReasonClassName } from '@/lib/linkReason';
+import LinkedAutomationBlock, { AutomationRefKind } from '@/components/automation/LinkedAutomationBlock';
+
+const automationRef = (tx: Transaction): { kind: AutomationRefKind; ref: string } | null => {
+  if (tx.type === 'payment') return { kind: 'payment_row', ref: String(tx.id) };
+  if ((tx.type === 'receipt_kassa' || tx.type === 'receipt_order') && tx.source === 'ecomkassa')
+    return { kind: 'receipt_row', ref: String(tx.id) };
+  if (tx.type === 'crm_deal' && tx.reference) return { kind: 'crm', ref: tx.reference };
+  return null;
+};
 
 interface TransactionDetailsDialogProps {
   transaction: Transaction | null;
@@ -121,6 +130,16 @@ const TransactionDetailsDialog = ({ transaction, relatedItems, open, onOpenChang
               </div>
             )}
           </div>
+
+          {(() => {
+            const autoRef = automationRef(transaction);
+            return autoRef ? (
+              <>
+                <Separator />
+                <LinkedAutomationBlock key={`${transaction.type}_${transaction.id}`} kind={autoRef.kind} refValue={autoRef.ref} />
+              </>
+            ) : null;
+          })()}
 
           {transaction.webhook_history && transaction.webhook_history.length > 1 && (
             <>
