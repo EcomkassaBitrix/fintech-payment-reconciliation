@@ -25,6 +25,7 @@ export interface Company {
   platform_admin?: boolean;
   support_access?: boolean;
   support_access_until?: string | null;
+  subscription_blocked?: boolean;
 }
 
 interface AuthUser {

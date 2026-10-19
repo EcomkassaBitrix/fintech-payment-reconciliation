@@ -12,7 +12,7 @@ import alfabank_backfill
 import cloudpayments_api
 import tochka_acquiring_api
 import yookassa_api
-from auth_guard import guard
+from auth_guard import guard, subscription_guard
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 PROVIDERS = ('alfabank', 'yookassa', 'tochka_acquiring', 'cloudpayments')
@@ -234,6 +234,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     denied = guard(event)
     if denied:
         return denied
+    blocked = subscription_guard(event)
+    if blocked:
+        return blocked
     if event.get('httpMethod') != 'POST':
         return reply(405, {'error': 'Method not allowed'})
 

@@ -16,7 +16,7 @@ import tochka_oauth
 from ru_trusted_ca import build_ssl_context
 from acquiring_settlement import process_acquiring_settlements
 from cron_report import record_cron_run
-from auth_guard import guard
+from auth_guard import guard, subscription_guard
 
 # enter.tochka.com отдаёт TLS-сертификат, подписанный НУЦ Минцифры РФ (ГОСТ) -
 # системное доверенное хранилище Python его не знает без этого контекста.
@@ -485,6 +485,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     denied = guard(event)
     if denied:
         return denied
+    blocked = subscription_guard(event)
+    if blocked:
+        return blocked
 
     resp = _handle(event, context)
     if event.get('httpMethod', 'POST') == 'POST':

@@ -11,7 +11,7 @@ from preparer import prepare, retry_delay, log
 import payment_verify
 from actions import ACTIONS
 from cron_report import record_cron_run
-from auth_guard import guard, internal_headers
+from auth_guard import guard, internal_headers, BLOCKED_COMPANIES_SQL, subscription_guard
 from db_safe import connect, is_transient, safe_rollback, with_retry
 
 NOTIFICATIONS_URL = 'https://functions.poehali.dev/8f4541fc-6ff8-4816-a954-324e4278743d'
@@ -98,6 +98,8 @@ def claim_jobs(cur, company_id=None, job_id=None, limit: int = BATCH) -> List[Di
         where = ['j.id = %s', "j.status IN ('new', 'error', 'failed', 'processing', 'ready')",
                  '(j.locked_until IS NULL OR j.locked_until < NOW())']
         args = [job_id]
+    # Подписка закончилась - автоматизация компании стоит, задания ждут оплаты.
+    where.append(f'j.company_id NOT IN ({BLOCKED_COMPANIES_SQL})')
     cur.execute(f'''
         UPDATE {SCHEMA}.automation_jobs u SET status = 'processing', locked_until = NOW() + INTERVAL '2 minutes',
                attempts = u.attempts + 1, updated_at = NOW()
@@ -675,6 +677,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     denied = guard(event)
     if denied:
         return denied
+    if event.get('httpMethod') == 'POST':
+        blocked = subscription_guard(event)
+        if blocked:
+            return blocked
 
     resp = _handle(event, context)
     if event.get('httpMethod', 'POST') == 'POST':

@@ -7,7 +7,7 @@ from ecomkassa_report import fetch_report, save_receipt_from_report, RECEIPT_DON
 from ecomkassa_token import ensure_valid_token
 import crm_link
 from cron_report import record_cron_run
-from auth_guard import guard
+from auth_guard import guard, subscription_guard
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -180,6 +180,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     denied = guard(event)
     if denied:
         return denied
+    blocked = subscription_guard(event)
+    if blocked:
+        return blocked
 
     resp = _handle(event, context)
     if event.get('httpMethod', 'POST') == 'POST':

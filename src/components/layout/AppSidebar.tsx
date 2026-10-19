@@ -202,7 +202,7 @@ const AppSidebar = ({ activeModule, onModuleChange, open = false, onClose }: App
 
       <nav className="space-y-2">
         {menuModules(currentCompany).map((module) => {
-          const locked = isLockedByTariff(currentCompany, module.id);
+          const locked = !!currentCompany?.subscription_blocked || isLockedByTariff(currentCompany, module.id);
           return (
             <button
               key={module.id}

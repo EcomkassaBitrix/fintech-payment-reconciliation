@@ -10,7 +10,7 @@ from ecomkassa_token import ensure_valid_token
 from ecomkassa_api import search_orders
 from fiscal_merge import merge_after_ecomkassa
 from cron_report import record_cron_run
-from auth_guard import guard
+from auth_guard import guard, subscription_guard
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
 ECOMKASSA_BASE_URL = 'https://app.ecomkassa.ru'
@@ -621,6 +621,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     denied = guard(event)
     if denied:
         return denied
+    blocked = subscription_guard(event)
+    if blocked:
+        return blocked
 
     resp = _handle(event, context)
     if event.get('httpMethod', 'POST') == 'POST':

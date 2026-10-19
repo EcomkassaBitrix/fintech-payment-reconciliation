@@ -107,6 +107,73 @@ def support_access_open(cur, company_id: int, user_id: int) -> bool:
     return is_platform_admin(cur, user_id)
 
 
+def company_blocked(cur, company_id: Any) -> bool:
+    '''
+    Подписка компании закончилась (пробный период или оплаченный срок) - данные не принимаем,
+    автоматизации не работают. Компания платформы не блокируется никогда.
+    '''
+    cid = _as_int(company_id)
+    if not cid:
+        return False
+    cur.execute(f'''
+        SELECT NOT c.is_platform_admin AND (
+            s.id IS NULL OR s.status NOT IN ('trial', 'active')
+            OR COALESCE(CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END, 'infinity') < NOW()
+        )
+        FROM {SCHEMA}.companies c
+        LEFT JOIN {SCHEMA}.subscriptions s ON s.company_id = c.id
+        WHERE c.id = %s
+    ''', (cid,))
+    row = cur.fetchone()
+    return bool(row and row[0])
+
+
+BLOCKED_COMPANIES_SQL = f'''
+    SELECT c.id FROM {SCHEMA}.companies c
+    LEFT JOIN {SCHEMA}.subscriptions s ON s.company_id = c.id
+    WHERE NOT c.is_platform_admin AND (
+        s.id IS NULL OR s.status NOT IN ('trial', 'active')
+        OR COALESCE(CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END, 'infinity') < NOW()
+    )
+'''
+
+
+def blocked_response() -> Dict[str, Any]:
+    return _deny(402, 'Подписка закончилась - оплатите её, чтобы Сверка снова принимала данные', 'subscription_required')
+
+
+def subscription_guard(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    '''
+    Для функций, которые загружают данные: компания (company_id или integration_id в запросе)
+    без действующей подписки получает отказ 402, данные не загружаются.
+    '''
+    if event.get('httpMethod') == 'OPTIONS':
+        return None
+    params = event.get('queryStringParameters') or {}
+    try:
+        body = json.loads(event.get('body') or '{}')
+    except (TypeError, ValueError):
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    company_id = _as_int(body.get('company_id')) or _as_int(params.get('company_id'))
+    integration_id = _as_int(body.get('integration_id')) or _as_int(params.get('integration_id'))
+    if not company_id and not integration_id:
+        return None
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        if not company_id:
+            cur.execute(f'SELECT company_id FROM {SCHEMA}.user_integrations WHERE id = %s', (integration_id,))
+            row = cur.fetchone()
+            company_id = row[0] if row else None
+        if company_id and company_blocked(cur, company_id):
+            return blocked_response()
+    finally:
+        conn.close()
+    return None
+
+
 def log_support_action(cur, company_id: int, user_id: int, method: str, action: Optional[str]) -> None:
     '''Изменения поддержки в кабинете клиента пишутся в журнал (просмотр не пишется).'''
     if method in ('GET', 'HEAD'):

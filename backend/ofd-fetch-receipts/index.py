@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 from cron_report import record_cron_run
-from auth_guard import guard
+from auth_guard import guard, subscription_guard
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -433,6 +433,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     denied = guard(event)
     if denied:
         return denied
+    blocked = subscription_guard(event)
+    if blocked:
+        return blocked
 
     if event.get('httpMethod') == 'POST':
         body = json.loads(event.get('body') or '{}') or {}

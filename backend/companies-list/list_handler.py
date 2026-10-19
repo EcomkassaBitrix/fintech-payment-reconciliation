@@ -61,7 +61,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 r.slug, r.name, r.color,
                 s.status, s.trial_ends_at, s.current_period_end,
                 t.name, t.max_users, c.timezone, r.modules,
-                t.modules, t.max_integrations, t.max_automations, c.is_platform_admin, cu.platform_admin, t.slug
+                t.modules, t.max_integrations, t.max_automations, c.is_platform_admin, cu.platform_admin, t.slug,
+                (NOT c.is_platform_admin AND (s.id IS NULL OR s.status NOT IN ('trial', 'active')
+                 OR COALESCE(CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END, 'infinity') < NOW()))
             FROM company_users cu
             JOIN companies c ON c.id = cu.company_id
             JOIN roles r ON r.id = cu.role_id
@@ -94,7 +96,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'max_integrations': row[15],
                 'max_automations': row[16],
                 # Админка платформы - владельцу компании-администратора платформы и отмеченным им сотрудникам.
-                'platform_admin': bool(row[17]) and (row[4] == 'owner' or bool(row[18]))
+                'platform_admin': bool(row[17]) and (row[4] == 'owner' or bool(row[18])),
+                'subscription_blocked': bool(row[20])
             })
 
         # Компании, открывшие доступ поддержке: админ платформы работает в них с правами админа компании.
@@ -105,7 +108,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     c.id, c.name, c.inn, c.status,
                     s.status, s.trial_ends_at, s.current_period_end,
                     t.name, t.max_users, c.timezone, r.modules,
-                    t.modules, t.max_integrations, t.max_automations, t.slug, c.support_access_until
+                    t.modules, t.max_integrations, t.max_automations, t.slug, c.support_access_until,
+                    (NOT c.is_platform_admin AND (s.id IS NULL OR s.status NOT IN ('trial', 'active')
+                 OR COALESCE(CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END, 'infinity') < NOW()))
                 FROM companies c
                 JOIN roles r ON r.slug = 'admin'
                 LEFT JOIN subscriptions s ON s.company_id = c.id
@@ -137,6 +142,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'max_automations': row[13],
                     'platform_admin': False,
                     'support_access': True,
+                    'subscription_blocked': bool(row[16]),
                     'support_access_until': row[15].isoformat() if row[15] else None
                 })
 

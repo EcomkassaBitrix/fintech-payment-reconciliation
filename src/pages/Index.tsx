@@ -21,6 +21,7 @@ import { canOpenModule, defaultModuleFor, effectiveModules, isLockedByTariff } f
 import TariffLockedScreen from '@/components/layout/TariffLockedScreen';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import SubscriptionPage from './SubscriptionPage';
+import SubscriptionBlockedNotice from '@/components/subscription/SubscriptionBlockedNotice';
 import { DateFilter } from '@/components/filters/DateRangeFilter';
 import { TYPE_FILTERS, TypeFilter, TypeFilterKey } from '@/lib/transactionTypeFilter';
 
@@ -77,8 +78,12 @@ const Index = () => {
   // Раздел, недоступный роли (ссылка из уведомления, смена компании), не открываем -
   // показываем стартовый раздел роли.
   // Раздел есть в роли, но закрыт тарифом - открываем экран с предложением сменить тариф.
-  const lockedModule = activeModule && isLockedByTariff(currentCompany, activeModule) ? activeModule : null;
-  const shownModule = lockedModule ?? (activeModule && canOpen(activeModule) ? activeModule : defaultModuleFor(roleModules));
+  // Подписка закончилась - кабинет закрыт, всегда открыт только экран подписки и оплаты.
+  const subscriptionBlocked = !!currentCompany?.subscription_blocked;
+  const lockedModule = !subscriptionBlocked && activeModule && isLockedByTariff(currentCompany, activeModule) ? activeModule : null;
+  const shownModule = subscriptionBlocked
+    ? 'subscription'
+    : lockedModule ?? (activeModule && canOpen(activeModule) ? activeModule : defaultModuleFor(roleModules));
   const canOpenTransactions = canOpen('transactions');
 
   const handleModuleChange = (id: string) => {
@@ -90,7 +95,7 @@ const Index = () => {
   };
 
   const companyId = currentCompany?.id;
-  useAutomationHeartbeat(companyId, cronEnabled);
+  useAutomationHeartbeat(subscriptionBlocked ? undefined : companyId, cronEnabled);
   const notifications = useNotifications(companyId, user?.user_id);
   const banners = usePageBanners();
 
@@ -123,7 +128,7 @@ const Index = () => {
       />
 
 
-      <OnboardingWizard
+      {!subscriptionBlocked && <OnboardingWizard
         onConnect={
           canOpen('integrations')
             ? (slug) => {
@@ -140,7 +145,7 @@ const Index = () => {
               }
             : undefined
         }
-      />
+      />}
 
       <AppSidebar activeModule={shownModule ?? ''} onModuleChange={handleModuleChange} open={menuOpen} onClose={() => setMenuOpen(false)} />
 
@@ -188,6 +193,7 @@ const Index = () => {
         {!lockedModule && shownModule === 'access' && <AccessManagement />}
         {!lockedModule && shownModule === 'settings' && <SettingsPlaceholder />}
         {!lockedModule && shownModule === 'notifications' && <NotificationsPage />}
+        {subscriptionBlocked && <SubscriptionBlockedNotice />}
         {!lockedModule && shownModule === 'subscription' && <SubscriptionPage highlightModule={upgradeFor} />}
         {!shownModule && (
           <div className="mx-auto mt-24 max-w-md text-center text-muted-foreground">

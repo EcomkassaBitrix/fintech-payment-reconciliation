@@ -21,7 +21,7 @@ import ecomkassa_gateway_handler
 import moyklass_handler
 import realtycalendar_handler
 import automation
-from auth_guard import guard
+from auth_guard import guard, company_blocked
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -183,6 +183,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
 
         integration_id, company_id, config, webhook_settings, provider_slug, forward_url = integration_row
+
+        if company_blocked(cur, company_id):
+            # Подписка закончилась - данные не принимаем. Отвечаем «принято», чтобы
+            # платёжная система не слала повторы (CloudPayments ждёт {"code": 0}).
+            print(f'webhook skipped: company {company_id} subscription expired')
+            if provider_slug == 'cloudpayments':
+                return {'statusCode': 200, 'headers': {'Content-Type': 'application/json'},
+                        'body': json.dumps({'code': 0}), 'isBase64Encoded': False}
+            return {'statusCode': 200, 'headers': {'Content-Type': 'text/plain'}, 'body': 'OK', 'isBase64Encoded': False}
 
         if provider_slug == 'cloudpayments' and is_get_callback:
             webhook_data = {k: v for k, v in params.items() if k not in ('token', 'type')}

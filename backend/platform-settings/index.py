@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
-from auth_guard import guard, internal_headers
+from auth_guard import guard, internal_headers, BLOCKED_COMPANIES_SQL
 import platform_crm
 
 SCHEMA = 't_p83864310_fintech_payment_reco'
@@ -398,6 +398,7 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
     cur.execute(f'''
         SELECT c.id FROM {SCHEMA}.companies c
         WHERE c.status = 'active'
+          AND c.id NOT IN ({BLOCKED_COMPANIES_SQL})
           AND (EXISTS (SELECT 1 FROM {SCHEMA}.user_integrations ui
                        WHERE ui.company_id = c.id AND ui.status = 'active')
                OR EXISTS (SELECT 1 FROM {SCHEMA}.automation_scenarios s
