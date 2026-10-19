@@ -385,6 +385,41 @@ def enqueue_pending_invoices(cur, conn, company_id, scenarios) -> int:
     return created
 
 
+def heal_lost_receipts(cur, conn, company_id) -> int:
+    '''
+    Подтверждение кассы «чек пробит» могло не записаться (перегрузка базы), хотя сам чек уже сохранён.
+    Находим документы сценария в статусе «ожидает кассу», для которых пробитый чек уже есть,
+    привязываем чек, пишем итог в журнал и закрываем задание.
+    '''
+    cur.execute(f'''
+        UPDATE {SCHEMA}.automation_documents d
+        SET receipt_id = ekr.id, status = 'done', updated_at = NOW()
+        FROM {SCHEMA}.ecomkassa_receipts ekr
+        WHERE d.company_id = %s AND d.status = 'wait' AND d.ecom_uuid IS NOT NULL
+          AND d.created_at > NOW() - INTERVAL '7 days'
+          AND ekr.integration_id = d.kassa_integration_id AND ekr.order_id = d.ecom_uuid
+          AND ekr.status = 'done' AND ekr.removed_at IS NULL
+        RETURNING d.job_id, d.ecom_uuid, ekr.raw_data->'payload'
+    ''', (company_id,))
+    healed = cur.fetchall()
+    for job_id, uid, payload in healed:
+        if not job_id:
+            continue
+        p = payload or {}
+        parts = [f"ФД {p['fiscal_document_number']}" if p.get('fiscal_document_number') else None,
+                 f"ФП {p['fiscal_document_attribute']}" if p.get('fiscal_document_attribute') else None,
+                 f"{float(p['total']):.2f} ₽" if p.get('total') is not None else None]
+        parts = [x for x in parts if x]
+        log(cur, job_id, 'info', f"Чек пробит кассой{': ' + ', '.join(parts) if parts else ''} (сверка с кассой)")
+        cur.execute(f'''
+            UPDATE {SCHEMA}.automation_jobs SET status = 'done', step = 'done', last_error = NULL,
+                   locked_until = NULL, updated_at = NOW()
+            WHERE id = %s AND step = 'action' AND status IN ('error', 'ready', 'new', 'failed')
+        ''', (job_id,))
+    conn.commit()
+    return len(healed)
+
+
 def requeue_after_crash(cur, conn, job: Dict[str, Any], e: Exception) -> str:
     '''
     Задание упало посреди обработки (перегрузка базы, обрыв связи, ошибка в коде):
@@ -600,6 +635,11 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     except Exception as e:
                         safe_rollback(conn)
                         print(f'discrepancy scan failed: {e}')
+                    try:
+                        heal_lost_receipts(cur, conn, body['company_id'])
+                    except Exception as e:
+                        safe_rollback(conn)
+                        print(f'receipt heal failed: {e}')
                 processed = run(cur, conn, body.get('company_id'), budget_sec=run_budget(context))
                 try:
                     heartbeat_extras(cur, conn, body)
