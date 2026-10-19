@@ -24,7 +24,8 @@ def fetch_payment_types(token: str, store_id: str, protocol_version: str = 'v4')
     настроенных в личном кабинете Екомкассы (например, "Платёж через счёт
     Я.Касса"). Ответ: [{"id": 101, "code": 1, "description": "..."}].
     '''
-    url = f'{ECOMKASSA_BASE_URL}/fiscalorder/{protocol_version}/{store_id}/paymentTypes'
+    # Метод есть только в v4 (в v5 Екомкасса отвечает 404), виды оплат магазина от протокола не зависят.
+    url = f'{ECOMKASSA_BASE_URL}/fiscalorder/v4/{store_id}/paymentTypes'
     req = urllib.request.Request(url, headers={'Token': token})
     with urllib.request.urlopen(req, timeout=15) as response:
         return json.loads(response.read().decode('utf-8'))
