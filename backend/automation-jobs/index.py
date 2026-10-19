@@ -145,7 +145,7 @@ def process_job(cur, job: Dict[str, Any]) -> str:
     for key, value in (r[27] or {}).items():
         if key == 'agent':
             continue
-        if value in (None, '') or scenario['template'].get(key) not in (None, ''):
+        if value in (None, '') or scenario['template'].get(key) not in (None, '', 'client'):
             continue
         scenario['template'][key] = value
     # Агентские поля: пустые в шаблоне (наименование/ИНН/телефоны поставщика и т.д.) - из сценария.

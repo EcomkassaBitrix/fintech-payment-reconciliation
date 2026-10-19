@@ -2,7 +2,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import ReceiptFieldSelect from './ReceiptFieldSelect';
 import VariableChips, { SEQ_VARIABLE } from '@/components/automation/VariableChips';
-import { ActionTemplateForm, DATE_SOURCE_OPTIONS } from './actionTemplatesConfig';
+import { ActionTemplateForm, CORRECTION_TYPE_OPTIONS, DATE_SOURCE_OPTIONS } from './actionTemplatesConfig';
 
 interface CorrectionFieldsBlockProps {
   form: ActionTemplateForm;
@@ -19,9 +19,16 @@ const CorrectionFieldsBlock = ({ form, onChange }: CorrectionFieldsBlockProps) =
       <div>
         <div className="text-sm font-semibold">Основание коррекции</div>
         <div className="text-xs text-muted-foreground">
-          Самостоятельная коррекция · {form.protocol_version}. Пустые поля клиент заполнит в своём сценарии
+          Протокол {form.protocol_version}. Пустые поля клиент заполнит в своём сценарии
         </div>
       </div>
+
+      <ReceiptFieldSelect
+        label="Тип коррекции"
+        value={form.correction_type}
+        options={CORRECTION_TYPE_OPTIONS}
+        onChange={(v) => onChange({ ...form, correction_type: v })}
+      />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <ReceiptFieldSelect
@@ -39,7 +46,7 @@ const CorrectionFieldsBlock = ({ form, onChange }: CorrectionFieldsBlockProps) =
       </div>
 
       <div className="space-y-2">
-        <Label>Номер документа основания{v5 ? ' (необязательно)' : ''}</Label>
+        <Label>{form.correction_type === 'instruction' ? 'Номер предписания' : 'Номер документа основания'}{v5 && form.correction_type === 'self' ? ' (необязательно)' : ''}</Label>
         <Input value={form.correction_base_number} maxLength={32} placeholder="Заполнит клиент" onChange={set('correction_base_number')} />
         <VariableChips
           variables={[SEQ_VARIABLE]}
@@ -48,7 +55,7 @@ const CorrectionFieldsBlock = ({ form, onChange }: CorrectionFieldsBlockProps) =
               onChange({ ...form, correction_base_number: `${form.correction_base_number}${token}`.slice(0, 32) });
           }}
         />
-        {!v5 && <p className="text-xs text-muted-foreground">Обязателен в v4 — если пусто, клиент укажет в сценарии</p>}
+        {(!v5 || form.correction_type !== 'self') && <p className="text-xs text-muted-foreground">Обязателен{form.correction_type === 'instruction' ? ' при коррекции по предписанию' : ' в v4'} — если пусто, клиент укажет в сценарии</p>}
       </div>
 
       {!v5 && (

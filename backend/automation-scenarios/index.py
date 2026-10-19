@@ -75,7 +75,7 @@ def validate(cur, company_id: int, body: Dict[str, Any]) -> Optional[str]:
         return 'Для расхождения доступно только действие «Создать чек»'
     cur.execute(f'''
         SELECT action_type, is_active, provider_id, receipt_type, protocol_version, correction_date_source,
-               correction_base_number, correction_base_name, agent_settings
+               correction_base_number, correction_base_name, agent_settings, correction_type
         FROM {SCHEMA}.automation_action_templates WHERE code = %s
     ''', (body.get('action_template'),))
     template = cur.fetchone()
@@ -100,6 +100,13 @@ def validate(cur, company_id: int, body: Dict[str, Any]) -> Optional[str]:
         cs = body.get('correction_settings') or {}
         if not isinstance(cs, dict):
             return 'Некорректные настройки чека коррекции'
+        ctype = template[9] or 'self'
+        if ctype == 'client':
+            ctype = cs.get('correction_type')
+            if ctype not in ('self', 'instruction'):
+                return 'Выберите тип коррекции: самостоятельная или по предписанию'
+        if ctype == 'instruction' and not str(template[6] or cs.get('correction_base_number') or '').strip():
+            return 'Укажите номер предписания налогового органа (обязателен для коррекции по предписанию)'
         if template[4] != 'v5':
             if not str(cs.get('correction_base_number') or template[6] or '').strip():
                 return 'Укажите номер документа-основания коррекции (обязателен для протокола v4)'
@@ -259,6 +266,8 @@ def clean_correction(value: Any) -> Dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     result: Dict[str, Any] = {k: str(value[k]).strip()[:256] for k in CORRECTION_KEYS if str(value.get(k) or '').strip()}
+    if value.get('correction_type') in ('self', 'instruction'):
+        result['correction_type'] = value['correction_type']
     if value.get('vat') in SCENARIO_VATS:
         result['vat'] = value['vat']
     agent, _ = clean_agent(value.get('agent'))

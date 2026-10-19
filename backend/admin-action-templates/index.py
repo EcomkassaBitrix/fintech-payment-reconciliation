@@ -5,7 +5,7 @@ import psycopg2
 from typing import Dict, Any, Optional
 
 from dictionaries import (PROTOCOLS, RECEIPT_TYPES, OPERATIONS, PAYMENT_METHODS,
-                          PAYMENT_OBJECTS_V5, MEASURES, PAYMENT_TYPES, DATE_SOURCES,
+                          PAYMENT_OBJECTS_V5, MEASURES, PAYMENT_TYPES, DATE_SOURCES, CORRECTION_TYPES,
                           AGENT_TYPES, PAYING_AGENT_TYPES, MONEY_TRANSFER_TYPES, VATS)
 from auth_guard import guard
 
@@ -158,7 +158,7 @@ def normalize(cur, body: Dict[str, Any], creating: bool):
 
 def normalize_correction(body: Dict[str, Any]):
     '''
-    Основание коррекции (correction_info) - только самостоятельная коррекция (type = self):
+    Основание коррекции (correction_info): тип self / instruction / client (выбирает клиент в сценарии);
     v4 - base_date (дата документа основания) и base_number (номер документа) обязательны;
     v5 - только base_date (дата корректируемого расчёта), номер не передаётся.
     Дата берётся из платежа (payment), текущая (today) или задаётся в шаблоне (fixed).
@@ -167,6 +167,9 @@ def normalize_correction(body: Dict[str, Any]):
              'correction_base_number': None, 'correction_base_name': None, 'payment_address': None}
     if body.get('receipt_type') != 'correction':
         return empty, None
+    ctype = body.get('correction_type') or 'self'
+    if ctype not in CORRECTION_TYPES:
+        return None, 'Укажите тип коррекции'
     source = body.get('correction_date_source')
     if source not in DATE_SOURCES:
         return None, 'Укажите, откуда брать дату основания коррекции'
@@ -185,7 +188,7 @@ def normalize_correction(body: Dict[str, Any]):
         name = None
     if name and len(name) > 255:
         return None, 'Описание коррекции - не больше 255 символов'
-    return {'correction_type': 'self', 'correction_date_source': source, 'correction_base_date': base_date,
+    return {'correction_type': ctype, 'correction_date_source': source, 'correction_base_date': base_date,
             'correction_base_number': number, 'correction_base_name': name, 'payment_address': None}, None
 
 

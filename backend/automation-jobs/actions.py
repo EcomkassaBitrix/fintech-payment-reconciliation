@@ -84,7 +84,8 @@ def _correction_seq(cur, job: Optional[Dict[str, Any]]) -> Optional[int]:
 def correction_info(template: Dict[str, Any], data: Dict[str, Any], cur=None,
                     job: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict[str, Any]], str]:
     '''
-    correction_info чека коррекции (только самостоятельная, type = self), по АТОЛ Онлайн:
+    correction_info чека коррекции по АТОЛ Онлайн, type: self - самостоятельная, instruction - по предписанию
+    (номер предписания обязателен в обеих версиях):
     v4 (ФФД 1.05) - base_date, base_number, base_name - все обязательны (теги 1178, 1179, 1177);
     v5 (ФФД 1.2) - base_date (дата корректируемого расчёта), base_number - если указан.
     Дата: платежа / сегодня / вчера / фиксированная / из сценария (там же можно {сегодня}, {вчера}, {дата платежа}).
@@ -113,13 +114,18 @@ def correction_info(template: Dict[str, Any], data: Dict[str, Any], cur=None,
         if not paid_at:
             return None, 'Нет даты платежа для основания коррекции'
         base_date = datetime.fromisoformat(paid_at).date()
-    info = {'type': 'self', 'base_date': base_date.strftime('%d.%m.%Y')}
+    ctype = template.get('correction_type') or 'self'
+    if ctype not in ('self', 'instruction'):
+        return None, 'Не выбран тип коррекции (самостоятельная или по предписанию) - укажите в сценарии'
+    info = {'type': ctype, 'base_date': base_date.strftime('%d.%m.%Y')}
     number = str(template.get('correction_base_number') or '').strip()
     if SEQ_TOKEN in number:
         seq = _correction_seq(cur, job)
         if seq is None:
             return None, 'Не удалось определить порядковый номер чека коррекции'
         number = number.replace(SEQ_TOKEN, str(seq))[:32]
+    if ctype == 'instruction' and not number:
+        return None, 'Не указан номер предписания налогового органа - заполните в шаблоне или сценарии'
     if template.get('protocol_version') == 'v5':
         if number:
             info['base_number'] = number

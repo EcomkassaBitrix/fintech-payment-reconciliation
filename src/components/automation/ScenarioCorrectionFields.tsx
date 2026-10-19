@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CorrectionSettings } from './automationConfig';
 import VariableChips, { DATE_VARIABLES, SEQ_VARIABLE } from './VariableChips';
 
@@ -10,18 +11,32 @@ interface ScenarioCorrectionFieldsProps {
   setCs: (patch: CorrectionSettings) => void;
   isV5: boolean;
   dateLabel: string;
+  askType: boolean;
+  correctionType?: string;
   askNumber: boolean;
   askName: boolean;
   askDate: boolean;
   correctionMissing: (string | false)[];
 }
 
-const ScenarioCorrectionFields = ({ cs, setCs, isV5, dateLabel, askNumber, askName, askDate, correctionMissing }: ScenarioCorrectionFieldsProps) => (
+const ScenarioCorrectionFields = ({ cs, setCs, isV5, dateLabel, askType, correctionType, askNumber, askName, askDate, correctionMissing }: ScenarioCorrectionFieldsProps) => (
   <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
     <p className="text-xs text-muted-foreground">
-      Самостоятельная коррекция · протокол {isV5 ? 'v5 (ФФД 1.2)' : 'v4 (ФФД 1.05)'}. Дата основания — {dateLabel}. Место расчётов — адрес магазина в Екомкассе.
+      {correctionType === 'instruction' ? 'Коррекция по предписанию' : correctionType === 'self' ? 'Самостоятельная коррекция' : 'Чек коррекции'} · протокол {isV5 ? 'v5 (ФФД 1.2)' : 'v4 (ФФД 1.05)'}. Дата основания — {dateLabel}. Место расчётов — адрес магазина в Екомкассе.
     </p>
-    {!askNumber && !askName && !askDate && (
+    {askType && (
+      <div className="space-y-1">
+        <Label>Тип коррекции</Label>
+        <Select value={cs.correction_type || ''} onValueChange={(v) => setCs({ correction_type: v })}>
+          <SelectTrigger><SelectValue placeholder="Выберите тип" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="self">Самостоятельная</SelectItem>
+            <SelectItem value="instruction">По предписанию налогового органа</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    )}
+    {!askType && !askNumber && !askName && !askDate && (
       <p className="text-xs text-muted-foreground">Все поля коррекции заданы в шаблоне — заполнять ничего не нужно</p>
     )}
     {askDate && (
@@ -54,7 +69,7 @@ const ScenarioCorrectionFields = ({ cs, setCs, isV5, dateLabel, askNumber, askNa
     )}
     {askNumber && (
       <div className="space-y-1">
-        <Label>Номер документа-основания{isV5 ? ' (необязательно)' : ''}</Label>
+        <Label>{correctionType === 'instruction' ? 'Номер предписания' : 'Номер документа-основания'}{isV5 && correctionType !== 'instruction' ? ' (необязательно)' : ''}</Label>
         <Input
           placeholder="Например, 1 или номер акта"
           maxLength={32}

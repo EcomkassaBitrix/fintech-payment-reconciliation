@@ -35,8 +35,9 @@ VATS = {'none', 'vat0', 'vat5', 'vat7', 'vat10', 'vat20', 'vat22', 'vat105', 'va
 # Вид оплаты payments[].type: 0 - наличные, 1 - безналичный, 2 - предоплата (зачёт аванса).
 PAYMENT_TYPES = {0, 1, 2}
 
-# correction_info.type (тег 1173): в шаблонах только самостоятельная коррекция.
+# correction_info.type (тег 1173): самостоятельная / по предписанию / выбирает клиент в сценарии.
 CORRECTION_TYPE = 'self'
+CORRECTION_TYPES = {'self', 'instruction', 'client'}
 # Откуда брать correction_info.base_date: дата платежа или фиксированная дата из шаблона.
 DATE_SOURCES = {'payment', 'today', 'yesterday', 'fixed', 'client'}
 

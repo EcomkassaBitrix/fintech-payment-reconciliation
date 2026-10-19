@@ -72,6 +72,7 @@ export interface ActionTemplateOption {
   correction_base_number?: string | null;
   correction_base_name?: string | null;
   correction_date_source?: string | null;
+  correction_type?: string | null;
   payment_address?: string | null;
   default_email?: string | null;
   vat?: string | null;
@@ -87,6 +88,7 @@ export interface ActionTemplateOption {
 // v4 (ФФД 1.05) - номер (1179) и описание (1177) основания обязательны;
 // v5 (ФФД 1.2) - номер основания необязателен, описания нет. Место расчётов (1187) - в обеих.
 export interface CorrectionSettings {
+  correction_type?: string;
   correction_base_number?: string;
   correction_base_name?: string;
   correction_base_date?: string;

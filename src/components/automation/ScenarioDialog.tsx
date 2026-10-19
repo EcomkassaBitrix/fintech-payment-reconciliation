@@ -128,6 +128,9 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
   const setCs = (patch: CorrectionSettings) => setForm({ ...form, correction_settings: { ...cs, ...patch } });
   const askEmail = form.action_type === 'create_receipt' && !!currentTemplate && !currentTemplate.default_email;
   const emailInvalid = askEmail && !!cs.default_email?.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cs.default_email.trim());
+  const askType = isCorrection && currentTemplate?.correction_type === 'client';
+  const correctionType = askType ? cs.correction_type : currentTemplate?.correction_type || 'self';
+  const isInstruction = correctionType === 'instruction';
   const askNumber = isCorrection && !currentTemplate?.correction_base_number;
   const askName = isCorrection && !isV5 && !currentTemplate?.correction_base_name;
   const askDate = isCorrection && currentTemplate?.correction_date_source === 'client';
@@ -141,7 +144,8 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
   const dateLabel = DATE_LABELS[currentTemplate?.correction_date_source || ''] || 'дата платежа';
   const correctionMissing = isCorrection
     ? [
-        askNumber && !isV5 && !cs.correction_base_number?.trim() && 'номер основания',
+        askType && !cs.correction_type && 'тип коррекции',
+        askNumber && (!isV5 || isInstruction) && !cs.correction_base_number?.trim() && (isInstruction ? 'номер предписания' : 'номер основания'),
         askName && !cs.correction_base_name?.trim() && 'описание коррекции',
         askDate && !cs.correction_base_date && 'дата основания'
       ].filter(Boolean)
@@ -335,6 +339,8 @@ const ScenarioDialog = ({ open, onOpenChange, scenario, prefill, integrations, t
                 setCs={setCs}
                 isV5={isV5}
                 dateLabel={dateLabel}
+                askType={askType}
+                correctionType={correctionType}
                 askNumber={askNumber}
                 askName={askName}
                 askDate={askDate}

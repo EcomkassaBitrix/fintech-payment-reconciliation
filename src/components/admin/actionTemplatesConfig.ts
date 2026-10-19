@@ -251,6 +251,12 @@ export const EMPTY_TEMPLATE: ActionTemplateForm = {
   agent_settings: EMPTY_AGENT
 };
 
+export const CORRECTION_TYPE_OPTIONS: Option[] = [
+  { value: 'self', label: 'Самостоятельная' },
+  { value: 'instruction', label: 'По предписанию налогового органа' },
+  { value: 'client', label: 'Выберет клиент' }
+];
+
 export const DATE_SOURCE_OPTIONS: Option[] = [
   { value: 'payment', label: 'Дата платежа' },
   { value: 'today', label: 'Сегодня' },
