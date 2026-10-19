@@ -34,7 +34,7 @@ const EventsPage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasLoadedOnce = useRef(false);
   const { toast } = useToast();
-  const { currentCompany, cronEnabled } = useAuth();
+  const { currentCompany, cronEnabled, isPlatformAdmin } = useAuth();
   const companyId = currentCompany?.id;
 
   const fetchEvents = async () => {
@@ -164,11 +164,13 @@ const EventsPage = () => {
             Все входящие вебхуки и операции по интеграциям компании
           </p>
         </div>
-        <div className="grid grid-cols-[1fr_auto] gap-2 sm:flex sm:items-center shrink-0">
-          <Button onClick={openBackfillDialog} variant="outline" className="gap-2">
-            <Icon name={backfillPhase === 'running' ? 'Loader2' : 'Download'} size={16} className={backfillPhase === 'running' ? 'animate-spin' : ''} />
-            {backfillPhase === 'running' ? 'Загрузка идёт…' : 'Загрузить'}
-          </Button>
+        <div className={`${isPlatformAdmin ? 'grid grid-cols-[1fr_auto]' : 'flex justify-end'} gap-2 sm:flex sm:items-center shrink-0`}>
+          {isPlatformAdmin && (
+            <Button onClick={openBackfillDialog} variant="outline" className="gap-2">
+              <Icon name={backfillPhase === 'running' ? 'Loader2' : 'Download'} size={16} className={backfillPhase === 'running' ? 'animate-spin' : ''} />
+              {backfillPhase === 'running' ? 'Загрузка идёт…' : 'Загрузить'}
+            </Button>
+          )}
           <Button onClick={fetchEvents} variant="outline" size="icon" disabled={isRefreshing} aria-label="Обновить" title="Обновить">
             <Icon name="RefreshCw" size={16} className={isRefreshing ? 'animate-spin' : ''} />
           </Button>
@@ -206,7 +208,7 @@ const EventsPage = () => {
         event={selectedEvent}
       />
 
-      <BackfillDialog sources={backfillSources} />
+      {isPlatformAdmin && <BackfillDialog sources={backfillSources} />}
     </div>
   );
 };
