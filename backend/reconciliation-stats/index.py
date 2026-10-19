@@ -346,7 +346,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # receipts_ofd_total/receipts_ofd_count.
         cur.execute(f'''
             SELECT
-                ((ekr.doc_datetime AT TIME ZONE 'UTC') AT TIME ZONE %s)::date AS receipt_date,
+                ((COALESCE(corr.paid_at, ekr.doc_datetime) AT TIME ZONE 'UTC') AT TIME ZONE %s)::date AS receipt_date,
                 ekr.total_sum,
                 COALESCE(om.operation_type,
                          CASE WHEN adv.operation LIKE 'sell_refund%%' THEN 'Refund Income' END,
@@ -374,11 +374,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 WHERE d.company_id = ekr.company_id AND d.kassa_integration_id = ekr.integration_id
                   AND (d.receipt_id = ekr.id OR d.ecom_uuid = ekr.order_id)
             ) adv ON true
+            LEFT JOIN LATERAL (
+                -- Чек коррекции, пробитый сценарием по платежу, считается в день оплаты:
+                -- он закрывает старую продажу, а не приносит выручку в день пробития.
+                SELECT wp.created_at AS paid_at
+                FROM {SCHEMA}.automation_documents d
+                JOIN {SCHEMA}.webhook_payments wp ON wp.id = d.payment_row_id AND wp.removed_at IS NULL
+                WHERE d.company_id = ekr.company_id AND d.kassa_integration_id = ekr.integration_id
+                  AND d.operation LIKE '%%correction'
+                  AND (d.receipt_id = ekr.id OR d.ecom_uuid = ekr.order_id)
+                ORDER BY d.id DESC LIMIT 1
+            ) corr ON true
             WHERE ekr.company_id = %s
               AND ekr.removed_at IS NULL
               AND ekr.status IS DISTINCT FROM 'cancelled'
               AND ekr.status IS DISTINCT FROM 'wait'
-              AND ((ekr.doc_datetime AT TIME ZONE 'UTC') AT TIME ZONE %s)::date BETWEEN %s AND %s
+              AND ((COALESCE(corr.paid_at, ekr.doc_datetime) AT TIME ZONE 'UTC') AT TIME ZONE %s)::date BETWEEN %s AND %s
         ''', (company_tz, company_id, company_tz, date_from, date_to))
 
         receipts_rows = cur.fetchall()
@@ -406,11 +417,27 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # 2б. Чеки ОФД отдельно - контрольная точка "касса vs ОФД".
         cur.execute(f'''
-            SELECT ofd.total_sum, ofd.operation_type, ((ofd.doc_datetime AT TIME ZONE 'UTC') AT TIME ZONE %s)::date
+            SELECT ofd.total_sum, ofd.operation_type,
+                   ((COALESCE(corr.paid_at, ofd.doc_datetime) AT TIME ZONE 'UTC') AT TIME ZONE %s)::date
             FROM {SCHEMA}.ofd_receipts ofd
+            LEFT JOIN LATERAL (
+                -- Копия чека коррекции в ОФД - в тот же день оплаты, что и чек кассы.
+                SELECT wp.created_at AS paid_at
+                FROM {SCHEMA}.ecomkassa_receipts ekr
+                JOIN {SCHEMA}.automation_documents d
+                  ON d.kassa_integration_id = ekr.integration_id AND d.company_id = ekr.company_id
+                 AND (d.receipt_id = ekr.id OR d.ecom_uuid = ekr.order_id)
+                 AND d.operation LIKE '%%correction'
+                JOIN {SCHEMA}.webhook_payments wp ON wp.id = d.payment_row_id AND wp.removed_at IS NULL
+                WHERE ekr.company_id = ofd.company_id AND ekr.removed_at IS NULL
+                  AND ofd.fn_number = (ekr.raw_data->'payload'->>'fn_number')
+                  AND ofd.doc_number = (ekr.raw_data->'payload'->>'fiscal_document_number')
+                  AND (ofd.raw_data->>'DecimalFiscalSign') = (ekr.raw_data->'payload'->>'fiscal_document_attribute')
+                ORDER BY d.id DESC LIMIT 1
+            ) corr ON true
             WHERE ofd.company_id = %s
               AND ofd.removed_at IS NULL
-              AND ((ofd.doc_datetime AT TIME ZONE 'UTC') AT TIME ZONE %s)::date BETWEEN %s AND %s
+              AND ((COALESCE(corr.paid_at, ofd.doc_datetime) AT TIME ZONE 'UTC') AT TIME ZONE %s)::date BETWEEN %s AND %s
         ''', (company_tz, company_id, company_tz, date_from, date_to))
 
         receipts_ofd_total = 0.0
