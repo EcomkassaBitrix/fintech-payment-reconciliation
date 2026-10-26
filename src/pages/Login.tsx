@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +22,7 @@ const Login = () => {
   const [attempts, setAttempts] = useState(0);
   const [blockTime, setBlockTime] = useState(0);
   const { toast } = useToast();
-  const { requestCode, loginWithPhone } = useAuth();
+  const { requestCode, loginWithPhone, user, isLoading: authLoading } = useAuth();
 
   const MAX_ATTEMPTS = 5;
   const BLOCK_DURATION = 300;
@@ -107,6 +108,18 @@ const Login = () => {
       if (isValidPhone(formatted) && !selectedMessenger) setSelectedMessenger(messengers[0].id);
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Icon name="Loader2" className="animate-spin text-primary" size={32} />
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Navigate to="/app" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
