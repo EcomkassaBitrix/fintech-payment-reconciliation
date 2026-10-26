@@ -1,0 +1,3 @@
+UPDATE t_p83864310_fintech_payment_reco.webhook_payments SET removed_at = NOW() WHERE company_id = 2 AND removed_at IS NULL AND (created_at < '2026-01-01' OR receipt_id IN (SELECT id FROM t_p83864310_fintech_payment_reco.ecomkassa_receipts WHERE company_id = 2 AND COALESCE(doc_datetime, created_at) < '2026-01-01'));
+UPDATE t_p83864310_fintech_payment_reco.ecomkassa_receipts SET removed_at = NOW() WHERE company_id = 2 AND removed_at IS NULL AND COALESCE(doc_datetime, created_at) < '2026-01-01';
+UPDATE t_p83864310_fintech_payment_reco.ofd_receipts SET removed_at = NOW() WHERE company_id = 2 AND removed_at IS NULL AND COALESCE(doc_datetime, created_at) < '2026-01-01';
