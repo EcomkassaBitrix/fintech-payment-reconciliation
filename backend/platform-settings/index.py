@@ -167,12 +167,24 @@ def cron_sources_view(cur, settings: Dict[str, Any]) -> List[Dict[str, Any]]:
     ''')
     runs = {r[0]: {'loaded': int(r[1] or 0), 'calls': r[2], 'failed': r[3],
                    'finished_at': r[4].isoformat() if r[4] else None, 'error': r[5], 'pending': r[6]} for r in cur.fetchall()}
+    # Ошибки за последние сутки по каждой задаче - из истории запусков (последняя ошибка и её текст).
+    cur.execute(f'''
+        SELECT source, COUNT(*), COUNT(*) FILTER (WHERE error IS NOT NULL),
+               (ARRAY_AGG(error ORDER BY finished_at DESC) FILTER (WHERE error IS NOT NULL))[1],
+               MAX(finished_at) FILTER (WHERE error IS NOT NULL)
+        FROM {SCHEMA}.cron_run_history
+        WHERE finished_at > NOW() - INTERVAL '1 day'
+        GROUP BY source
+    ''')
+    day = {r[0]: {'runs': r[1], 'errors': r[2], 'last_error': r[3],
+                  'last_error_at': r[4].isoformat() if r[4] else None} for r in cur.fetchall()}
     out = []
     for src in CRON_SOURCES:
         integrations = [i for slug in SOURCE_PROVIDERS.get(src['key'], []) for i in by_slug.get(slug, [])]
         out.append({**src, 'enabled': source_on(settings, src['key']), 'interval': source_interval(settings, src['key']),
                     'integrations': integrations,
-                    'last_run': runs.get(src['key'])})
+                    'last_run': runs.get(src['key']),
+                    'day_stats': day.get(src['key'], {'runs': 0, 'errors': 0, 'last_error': None, 'last_error_at': None})})
     return out
 
 # Интервал (мин) для внешнего планировщика - показывается в админке.
@@ -610,6 +622,10 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
                     ON CONFLICT (source, company_id, item_key) DO UPDATE SET
                         tick = EXCLUDED.tick, loaded = 0, error = NULL, finished_at = NOW()
                 ''', (str(tick_id)[:40],))
+                cur.execute(f'''
+                    INSERT INTO {SCHEMA}.cron_run_history (source, company_id, item_key, tick, loaded, error)
+                    VALUES ('subscriptions', 0, '', %s, 0, NULL)
+                ''', (str(tick_id)[:40],))
                 conn.commit()
     except Exception as e:
         conn.rollback()
@@ -650,6 +666,13 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
         UPDATE {SCHEMA}.platform_settings SET cron_last_tick_at = NOW(), cron_last_result = %s WHERE id = 1
     ''', (json.dumps(summary, ensure_ascii=False),))
     conn.commit()
+    try:
+        # История запусков нужна только для счётчика за сутки - храним неделю.
+        cur.execute(f"DELETE FROM {SCHEMA}.cron_run_history WHERE finished_at < NOW() - INTERVAL '7 days'")
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'cron history cleanup failed: {e}')
     return summary
 
 

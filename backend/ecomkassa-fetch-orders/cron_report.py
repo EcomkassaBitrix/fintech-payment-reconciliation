@@ -48,6 +48,12 @@ def record_cron_run(event: Dict[str, Any], resp: Dict[str, Any], source: str, lo
                     ON CONFLICT (source, company_id, item_key) DO UPDATE SET
                         tick = EXCLUDED.tick, loaded = EXCLUDED.loaded, error = EXCLUDED.error, finished_at = NOW()
                 ''', (req.get('cron_source') or source, int(company_id), str(tick)[:40], str(req.get('cron_item') or req.get('integration_id') or ''), loaded, error))
+                if error != 'pending':
+                    # История запусков - для счётчика ошибок за сутки в админке.
+                    cur.execute(f'''
+                        INSERT INTO {SCHEMA}.cron_run_history (source, company_id, item_key, tick, loaded, error)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    ''', (req.get('cron_source') or source, int(company_id), str(req.get('cron_item') or req.get('integration_id') or ''), str(tick)[:40], loaded, error))
                 conn.commit()
             finally:
                 conn.close()

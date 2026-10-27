@@ -20,11 +20,19 @@ export interface CronSourceRun {
   pending?: number;
 }
 
+export interface CronDayStats {
+  runs: number;
+  errors: number;
+  last_error: string | null;
+  last_error_at: string | null;
+}
+
 export interface CronSource {
   key: string;
   unit: string;
   interval: string;
   last_run: CronSourceRun | null;
+  day_stats?: CronDayStats;
   name: string;
   hint: string;
   enabled: boolean;
@@ -60,7 +68,23 @@ const CronSourcesList = ({ sources, values, intervals, onChange, onIntervalChang
         return (
           <div key={src.key} className="flex items-start gap-3 p-3">
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium">{src.name}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{src.name}</span>
+                {src.day_stats && src.day_stats.runs > 0 && (
+                  <span
+                    title={
+                      src.day_stats.last_error
+                        ? `Последняя ошибка ${formatDateTime(src.day_stats.last_error_at!, undefined, true)}: ${src.day_stats.last_error}`
+                        : undefined
+                    }
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      src.day_stats.errors > 0 ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success'
+                    }`}
+                  >
+                    За сутки: {src.day_stats.errors > 0 ? `ошибок ${src.day_stats.errors} из ${src.day_stats.runs}` : `без ошибок, ${src.day_stats.runs} запусков`}
+                  </span>
+                )}
+              </div>
               <div className="text-xs text-muted-foreground">{src.hint}</div>
               {src.last_run?.finished_at && (
                 <div className={`mt-1 text-xs ${src.last_run.failed ? 'text-destructive' : 'text-foreground'}`}>

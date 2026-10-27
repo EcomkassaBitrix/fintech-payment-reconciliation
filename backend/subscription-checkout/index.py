@@ -235,6 +235,11 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 ON CONFLICT (source, company_id, item_key) DO UPDATE SET
                     tick = EXCLUDED.tick, loaded = EXCLUDED.loaded, error = EXCLUDED.error, finished_at = NOW()
             ''', (str(body.get('cron_tick') or '')[:40], len(renewed) - len(failed), error))
+            if error != 'pending':
+                cur.execute(f'''
+                    INSERT INTO {billing.SCHEMA}.cron_run_history (source, company_id, item_key, tick, loaded, error)
+                    VALUES ('subscriptions', 0, '', %s, %s, %s)
+                ''', (str(body.get('cron_tick') or '')[:40], len(renewed) - len(failed), error))
             conn.commit()
             return respond(200, {'success': True, **result})
         finally:
