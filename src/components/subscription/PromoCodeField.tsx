@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { formatLongDate } from '@/lib/subscription';
 import functionUrls from '../../../backend/func2url.json';
 import { couponPeriodLabel } from '@/lib/couponPeriod';
+import { GOALS, reachGoal } from '@/lib/metrika';
 
 interface CouponInfo {
   code: string;
@@ -66,6 +67,12 @@ const PromoCodeField = ({ companyId, canApply, onApplied }: Props) => {
     const r = await call('coupon_apply', companyId, code.trim()).catch(() => ({ error: 'Ошибка подключения' }));
     setApplying(false);
     if ('coupon' in r && r.coupon) {
+      reachGoal(GOALS.promoActivated, {
+        source: 'subscription',
+        code: r.coupon.code || code.trim().toUpperCase(),
+        tariff_name: r.coupon.tariff_name,
+        company_id: companyId
+      });
       toast({
         title: `Промокод применён: тариф «${r.coupon.tariff_name}»`,
         description: r.coupon.period_end ? `Подписка действует до ${formatLongDate(r.coupon.period_end)}` : undefined

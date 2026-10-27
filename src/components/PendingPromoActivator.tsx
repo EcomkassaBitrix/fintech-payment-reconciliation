@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { formatLongDate } from '@/lib/subscription';
+import { GOALS, reachGoal } from '@/lib/metrika';
 import { forgetPromo, pendingPromo, pendingPromoError, SUBSCRIPTION_CHANGED } from '@/lib/pendingPromo';
 import functionUrls from '../../backend/func2url.json';
 
@@ -33,6 +34,12 @@ const PendingPromoActivator = () => {
         const d = await res.json();
         forgetPromo();
         if (res.ok && d.success) {
+          reachGoal(GOALS.promoActivated, {
+            source: 'promo_link',
+            code,
+            tariff_name: d.coupon?.tariff_name,
+            company_id: companyId
+          });
           toast({
             title: `Промокод ${code} активирован: тариф «${d.coupon.tariff_name}»`,
             description: d.coupon.period_end ? `Подписка действует до ${formatLongDate(d.coupon.period_end)}` : undefined

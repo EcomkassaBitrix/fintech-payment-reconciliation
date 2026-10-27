@@ -34,6 +34,7 @@ export const GOALS = {
   registration: 'registration',
   trialStarted: 'trial_started',
   tariffPaid: 'tariff_paid',
+  promoActivated: 'promo_activated',
   integrationAdded: 'integration_added',
   scenarioAdded: 'scenario_added',
   userInvited: 'user_invited'
