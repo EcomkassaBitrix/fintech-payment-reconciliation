@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import Icon from '@/components/ui/icon';
 import { modules } from '@/components/access/accessTypes';
-import { discountedYearPrice, periodLabel } from '@/lib/tariffPricing';
+import { discountedYearPrice, fullYearPrice, periodLabel } from '@/lib/tariffPricing';
 import { pluralDays } from '@/lib/trialDays';
 import type { Tariff } from './PricingSection';
 
@@ -33,7 +33,15 @@ const TariffCompareTable = ({ tariffs }: { tariffs: TariffWithModules[] }) => {
           value: (t) =>
             t.price > 0 ? fmt(discountedYearPrice(t.price, t.period_days, t.yearly_discount_percent || 0)) : '—'
         },
-        { label: 'Скидка за год', value: (t) => (t.yearly_discount_percent ? `${t.yearly_discount_percent}%` : '—') },
+        {
+          label: 'Скидка за год',
+          value: (t) => {
+            const percent = t.yearly_discount_percent || 0;
+            if (t.price <= 0 || percent <= 0) return '—';
+            const saved = fullYearPrice(t.price, t.period_days) - discountedYearPrice(t.price, t.period_days, percent);
+            return `−${fmt(saved)} (${percent}%)`;
+          }
+        },
         { label: 'Бесплатный период', value: (t) => (t.trial_days ? pluralDays(t.trial_days) : '—') }
       ]
     },
