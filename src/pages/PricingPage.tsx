@@ -4,6 +4,7 @@ import { forgetTariff } from '@/lib/chosenTariff';
 import type { Tariff } from '@/components/landing/PricingSection';
 import LandingHeader from '@/components/landing/LandingHeader';
 import PricingSection from '@/components/landing/PricingSection';
+import TariffCompareTable from '@/components/landing/TariffCompareTable';
 import FaqSection from '@/components/landing/FaqSection';
 import CtaSection from '@/components/landing/CtaSection';
 import LandingFooter from '@/components/landing/LandingFooter';
@@ -22,6 +23,7 @@ const PricingPage = ({ tariffs }: { tariffs: Tariff[] | null }) => {
     <div className="min-h-screen bg-background">
       <LandingHeader onCtaClick={handleCtaClick} trialDays={trialDays} />
       <PricingSection asPage onCtaClick={() => navigate('/login')} trialDays={trialDays} tariffs={tariffs} />
+      {tariffs?.length ? <TariffCompareTable tariffs={tariffs} /> : null}
       <FaqSection />
       <CtaSection onCtaClick={handleCtaClick} trialDays={trialDays} />
       <LandingFooter />
