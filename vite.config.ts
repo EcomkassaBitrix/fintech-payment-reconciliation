@@ -1,133 +1,12 @@
 import {defineConfig} from "vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
+import {tanstackStart} from "@tanstack/react-start/plugin/vite";
 import path from "path";
 import {componentTagger} from "pp-tagger";
 
-// https://vitejs.dev/config/
-// HMR-сокет превью рвёт инфраструктура: ingress-nginx на каждом reload
-// конфига (захват/освобождение любого dev-пода) через 30 с закрывает все
-// соединения старых воркеров; DDoS Guard режет «тихие» соединения. Сам vite
-// на любой обрыв перезагружает страницу. Плагин держит превью живым:
-// - сервер шлёт состояние «boot:seq» сразу после каждой рассылки клиентам
-//   (update, full-reload, error...) и раз в 5-9 с — это и двусторонний
-//   keepalive для DDoS Guard (рандом — чтобы не ловить его фильтр одинаковых
-//   интервалов). boot меняется на рестарте vite, seq — на каждой рассылке;
-// - клиент (скрипт в index.html) подменяет сокет vite-hmr «вечным»: на
-//   обрыве тихо переподключается и перезагружает страницу, только если за
-//   время разрыва сервер рестартовал или что-то разослал. Не переподключился
-//   с трёх попыток — отдаёт обрыв vite, дальше как раньше (ждёт сервер и
-//   перезагружает).
-// Клиентский ping понижен до 7 с через server.hmr.timeout ниже.
-//
-// Самовосстановление. В dev страница — это ~100 отдельных модулей, и один
-// сорванный запрос (502 ingress на reload, обрыв HTTP/2 на плохой сети) роняет
-// весь граф src/main.tsx: React не монтируется, экран пустой до F5. Скрипт сам
-// перезагружает превью, если не загрузился модуль или стиль своего сайта либо
-// не прошёл динамический import. Перед перезагрузкой ждёт, пока страница снова
-// отвечает 200 (сервер лежит — ждём, а не крутим reload), и растит паузу
-// 1 → 2 → 4 … 60 с (счётчик в sessionStorage, сбрасывается через 10 с после
-// load) — битый код не уводит превью в цикл. Тот же блок — в шаблоне TanStack
-// (src/platform/dev-hmr.ts).
-const hmrClient = `(() => {
-    const NativeWebSocket = WebSocket;
-    class HmrSocket extends EventTarget {
-        OPEN = 1;
-        readyState = 0;
-        state = "";
-        queue = [];
-        constructor(url, protocols) {
-            super();
-            this.url = url;
-            this.protocols = protocols;
-            this.connect(0);
-        }
-        connect(attempt) {
-            const ws = this.ws = new NativeWebSocket(this.url, this.protocols);
-            let fresh = true;
-            ws.onopen = () => {
-                attempt = 0;
-                this.queue.splice(0).forEach((data) => ws.send(data));
-                if (this.readyState === 0) {
-                    this.readyState = 1;
-                    this.dispatchEvent(new Event("open"));
-                }
-            };
-            ws.onmessage = (event) => {
-                if (event.data.includes('"ezst:hmr"')) {
-                    const state = JSON.parse(event.data).data;
-                    if (fresh && this.state && this.state !== state) return location.reload();
-                    fresh = false;
-                    this.state = state;
-                }
-                this.dispatchEvent(new MessageEvent("message", {data: event.data}));
-            };
-            ws.onclose = (event) => {
-                if (this.readyState === 3) return;
-                if (!this.state || attempt === 3) {
-                    this.readyState = 3;
-                    return this.dispatchEvent(new CloseEvent("close", event));
-                }
-                setTimeout(() => this.connect(attempt + 1), attempt * 1000);
-            };
-        }
-        send(data) {
-            if (this.ws.readyState === 1) this.ws.send(data);
-            else this.queue.push(data);
-        }
-        close(code, reason) {
-            this.readyState = 3;
-            this.ws.close(code, reason);
-        }
-    }
-    window.WebSocket = new Proxy(NativeWebSocket, {
-        construct: (target, args) => args[1] === "vite-hmr" ? new HmrSocket(...args) : new target(...args),
-    });
-
-    const KEY = "ezst:recover";
-    const attempts = () => {
-        try {
-            return Number(sessionStorage.getItem(KEY)) || 0;
-        } catch {
-            return 3;
-        }
-    };
-    const setAttempts = (n) => {
-        try {
-            sessionStorage.setItem(KEY, String(n));
-        } catch {}
-    };
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const pause = (n) => Math.min(60000, 1000 * 2 ** n);
-    const answers = () => fetch(location.href, {cache: "no-store"}).then((r) => r.ok, () => false);
-    let recovering = false;
-    const recover = async (reason) => {
-        if (recovering) return;
-        recovering = true;
-        const n = attempts();
-        console.warn("[ezst] превью не загрузилось (" + reason + "), перезагрузка через " + pause(n) / 1000 + " с");
-        await sleep(pause(n));
-        for (let i = 0; !(await answers()); i++) await sleep(pause(i));
-        setAttempts(n + 1);
-        location.reload();
-    };
-    const failedImport = (message) => /dynamically imported module|Importing a module script failed/.test(message || "");
-    const own = (url) => !!url && new URL(url, location.href).origin === location.origin;
-    window.addEventListener("pagehide", () => recovering = true);
-    window.addEventListener("error", (event) => {
-        const el = event.target;
-        const module = el instanceof HTMLScriptElement && el.type === "module" && own(el.src);
-        const link = el instanceof HTMLLinkElement && ["modulepreload", "stylesheet"].includes(el.rel) && own(el.href);
-        if (module || link) return recover("не загрузился " + (el.src || el.href));
-        if (failedImport(event.message)) recover(event.message);
-    }, true);
-    window.addEventListener("unhandledrejection", (event) => {
-        const message = String(event.reason?.message || event.reason);
-        if (failedImport(message)) recover(message);
-    });
-    window.addEventListener("vite:preloadError", () => recover("vite:preloadError"));
-    window.addEventListener("load", () => setTimeout(() => recovering || setAttempts(0), 10000));
-})();`;
-
+// Серверная половина hmr-keepalive (клиент — src/platform/dev-hmr.ts,
+// подключается в src/routes/__root.tsx): после каждой рассылки и раз в 5-9 с
+// шлём состояние «boot:seq», чтобы превью переживало обрывы сокета.
 const hmrKeepalive = {
     name: 'hmr-ws-keepalive',
     apply: 'serve' as const,
@@ -152,28 +31,63 @@ const hmrKeepalive = {
             if (timer) clearTimeout(timer);
         });
     },
-    transformIndexHtml: () => [{tag: 'script', children: hmrClient, injectTo: 'head-prepend' as const}],
 };
 
-export default defineConfig(({mode}) => ({
+// https://tanstack.com/start/latest/docs/framework/react/guide/hosting
+export default defineConfig(({command, mode}) => ({
+    // Серверный бандл самодостаточен: зависимости вшиваются в
+    // dist/server/server.js, на сервере node_modules не нужен. Только для
+    // сборки: dev-сервер исполняет CJS-пакеты (react) из node_modules.
+    ssr: command === 'build' ? {noExternal: true} : undefined,
     plugins: [
-        hmrKeepalive,
-        react(),
+        // Тэггер первым: он размечает исходник до преобразований Start, иначе
+        // номера строк в разметке сервера и клиента расходятся (hydration).
         mode === 'development' &&
         componentTagger(),
+        // Компоненты маршрутов не выносим в отдельные модули: Start кладёт их
+        // в src/routes/x.tsx?tsr-split=component, а тэггер модули с query
+        // пропускает — визуальный редактор не видел JSX страниц. Пустой
+        // список групп = ничего не выносить (autoCodeSplitting Start не даёт
+        // выключить).
+        tanstackStart({router: {codeSplittingOptions: {defaultBehavior: []}}}),
+        react(),
+        hmrKeepalive,
     ].filter(Boolean),
     resolve: {
         alias: {
-            "@": path.resolve(__dirname, "./src"),
+            "@": path.resolve(import.meta.dirname, "./src"),
         },
     },
+    // Start не пребандлит свои пакеты, и в dev роутер грузился ~120
+    // отдельными модулями: долго на плохой сети, и любой сорванный запрос
+    // ронял гидрацию. Библиотеки роутера (без виртуальных импортов Start)
+    // собираем в .vite/deps — один экземпляр и для кода приложения, и для
+    // сырых модулей Start.
+    optimizeDeps: {
+        include: [
+            "@tanstack/react-router",
+            "@tanstack/router-core",
+            "@tanstack/router-core/isServer",
+            "@tanstack/router-core/ssr/client",
+            "@tanstack/history",
+            "@tanstack/react-store",
+            "seroval",
+            "seroval-plugins/web",
+            "cookie-es",
+        ],
+    },
     server: {
+        // Маршруты преобразуются на старте vite, а не на первом заходе в превью.
+        warmup: {
+            clientFiles: ["./src/routes/**/*.tsx", "./src/router.tsx"],
+            ssrFiles: ["./src/routes/**/*.tsx", "./src/router.tsx"],
+        },
         host: '0.0.0.0',
         port: 5173,
         allowedHosts: true,
         hmr: {
-            timeout: 7000,
-            overlay: false // Disables the error overlay if you only want console errors
+            overlay: false,
+            timeout: 7000, // pingInterval @vite/client — нужен <30s для DDoS Guard
         }
     },
 }));

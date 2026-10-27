@@ -6,7 +6,7 @@ import PaymentsList from './PaymentsList';
 interface PaymentResultAndHistoryProps {
   paid: { title: string; until: string } | null;
   payError: string | null;
-  resultRef: RefObject<HTMLDivElement>;
+  resultRef: RefObject<HTMLDivElement | null>;
   payments: Payment[];
 }
 

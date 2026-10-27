@@ -1,1 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.platform_banners ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;

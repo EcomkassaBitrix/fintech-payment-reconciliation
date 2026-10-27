@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from "@/lib/router-compat";
 import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 import { useAuth } from '@/contexts/AuthContext';

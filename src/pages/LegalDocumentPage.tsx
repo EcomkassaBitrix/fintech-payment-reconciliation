@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from "@/lib/router-compat";
 import Icon from '@/components/ui/icon';
 import LandingFooter from '@/components/landing/LandingFooter';
 import functionUrls from '../../backend/func2url.json';
@@ -34,7 +34,6 @@ const LegalDocumentPage = ({ doc }: { doc: LegalDoc }) => {
       .split('{{PHONE}}').join(phone ? ` или по телефону ${phone}` : '');
 
   useEffect(() => {
-    document.title = `${title} — Сверка`;
     window.scrollTo(0, 0);
   }, [title]);
 

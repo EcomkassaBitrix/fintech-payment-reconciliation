@@ -1,3 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.user_integrations ALTER COLUMN legacy_owner_id_unused SET DEFAULT 0;
-ALTER TABLE t_p83864310_fintech_payment_reco.webhook_payments ALTER COLUMN legacy_owner_id_unused SET DEFAULT 0;
-ALTER TABLE t_p83864310_fintech_payment_reco.ofd_receipts ALTER COLUMN legacy_owner_id_unused SET DEFAULT 0;

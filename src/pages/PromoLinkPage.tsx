@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from "@/lib/router-compat";
 import Icon from '@/components/ui/icon';
 import { useAuth } from '@/contexts/AuthContext';
 import { rememberPromo } from '@/lib/pendingPromo';

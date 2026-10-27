@@ -1,4 +1,0 @@
-CREATE INDEX idx_company_users_user ON t_p83864310_fintech_payment_reco.company_users(user_id);
-CREATE INDEX idx_company_users_company ON t_p83864310_fintech_payment_reco.company_users(company_id);
-CREATE INDEX idx_subscriptions_company ON t_p83864310_fintech_payment_reco.subscriptions(company_id);
-CREATE INDEX idx_app_users_phone ON t_p83864310_fintech_payment_reco.app_users(phone);

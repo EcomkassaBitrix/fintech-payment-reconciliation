@@ -1,3 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.user_integrations ADD COLUMN company_id INTEGER REFERENCES t_p83864310_fintech_payment_reco.companies(id);
-ALTER TABLE t_p83864310_fintech_payment_reco.webhook_payments ADD COLUMN company_id INTEGER REFERENCES t_p83864310_fintech_payment_reco.companies(id);
-ALTER TABLE t_p83864310_fintech_payment_reco.ofd_receipts ADD COLUMN company_id INTEGER REFERENCES t_p83864310_fintech_payment_reco.companies(id);

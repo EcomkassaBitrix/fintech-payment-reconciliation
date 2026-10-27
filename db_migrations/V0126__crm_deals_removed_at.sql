@@ -1,1 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.crm_deals ADD COLUMN IF NOT EXISTS removed_at timestamp NULL;

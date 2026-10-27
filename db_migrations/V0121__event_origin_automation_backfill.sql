@@ -1,1 +1,0 @@
-UPDATE t_p83864310_fintech_payment_reco.ecomkassa_receipts r SET origin = 'automation' WHERE r.origin IS NULL AND r.order_type = 'CORD' AND EXISTS (SELECT 1 FROM t_p83864310_fintech_payment_reco.automation_documents d WHERE d.kassa_integration_id = r.integration_id AND d.ecom_uuid = r.order_id);

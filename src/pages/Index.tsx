@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from "@/lib/router-compat";
 import Icon from '@/components/ui/icon';
 import NotificationCenter from '@/components/NotificationCenter';
 import AppHeader from '@/components/layout/AppHeader';

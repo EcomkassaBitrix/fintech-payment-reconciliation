@@ -1,3 +1,0 @@
-CREATE INDEX idx_user_integrations_company ON t_p83864310_fintech_payment_reco.user_integrations(company_id);
-CREATE INDEX idx_webhook_payments_company ON t_p83864310_fintech_payment_reco.webhook_payments(company_id);
-CREATE INDEX idx_ofd_receipts_company ON t_p83864310_fintech_payment_reco.ofd_receipts(company_id);

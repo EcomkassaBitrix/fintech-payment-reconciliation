@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from "@/lib/router-compat";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

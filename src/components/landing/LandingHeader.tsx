@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 import { pluralDays } from '@/lib/trialDays';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "@/lib/router-compat";
 import { useAuth } from '@/contexts/AuthContext';
 
 const NAV_LINKS = [

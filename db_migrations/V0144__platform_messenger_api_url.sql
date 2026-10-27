@@ -1,1 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.platform_settings ADD COLUMN messenger_api_url VARCHAR(500) NULL;

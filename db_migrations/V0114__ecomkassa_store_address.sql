@@ -1,2 +1,0 @@
-UPDATE t_p83864310_fintech_payment_reco.user_integrations SET config = config || '{"store_address": "app.ecomkassa.ru"}'::jsonb WHERE id = 21 AND config->>'store_id' = '558' AND NOT (config ? 'store_address');
-UPDATE t_p83864310_fintech_payment_reco.user_integrations SET config = config || '{"store_address": "BIFIT TEST"}'::jsonb WHERE id = 14 AND config->>'store_id' = '990' AND NOT (config ? 'store_address');

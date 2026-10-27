@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from "@/lib/router-compat";
 import functionUrls from '../../backend/func2url.json';
 import { setMetrikaCounter } from '@/lib/metrika';
 

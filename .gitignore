@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Служебные файлы warmup/handoff (задания hero-генераторам, скачанный
+# выбранный hero и спека) — не для репозитория пользователя
+tmp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -23,6 +27,15 @@ dist-ssr
 *.sln
 *.sw?
 builds
+# Серверные сборки SSR — приватный артефакт публикации, не для репозитория
+builds-server
+.tanstack
+.output
 
-# warmup/handoff артефакты
-tmp/
+# Python (страховка: разовые Bash-скрипты должны класть venv в /tmp, но если
+# venv/кэш всё же оказался в проекте — не коммитить его через end-of-turn git add -A)
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/

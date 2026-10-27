@@ -1,2 +1,0 @@
-UPDATE t_p83864310_fintech_payment_reco.crm_deals SET customer_emails = NULL, linked_receipt_id = NULL, linked_at = NULL;
-UPDATE t_p83864310_fintech_payment_reco.ecomkassa_receipts SET customer_email = NULL, customer_checked = false WHERE customer_email LIKE '%wappi%';

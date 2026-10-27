@@ -1,2 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.subscription_payments ADD COLUMN method VARCHAR(30) NOT NULL DEFAULT 'manual';
-UPDATE t_p83864310_fintech_payment_reco.subscription_payments SET method = 'manual';

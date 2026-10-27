@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from "@/lib/router-compat";
 import functionUrls from '../../backend/func2url.json';
 import { DEFAULT_TRIAL_DAYS } from '@/lib/trialDays';
 import { forgetTariff } from '@/lib/chosenTariff';

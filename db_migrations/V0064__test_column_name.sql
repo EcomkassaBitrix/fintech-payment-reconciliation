@@ -1,2 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.webhook_payments
-ADD COLUMN removed_at TIMESTAMP NULL;

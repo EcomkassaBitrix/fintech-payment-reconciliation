@@ -1,3 +1,0 @@
-INSERT INTO t_p83864310_fintech_payment_reco.integration_providers (category_id, name, slug, logo_url, description, webhook_enabled, status)
-SELECT 1, 'Альфа-Банк (Эквайринг)', 'alfabank', '', 'Приём платежей через интернет-эквайринг Альфа-Банка: уведомление об оплате + корзина заказа для чека', true, 'active'
-WHERE NOT EXISTS (SELECT 1 FROM t_p83864310_fintech_payment_reco.integration_providers WHERE slug = 'alfabank');

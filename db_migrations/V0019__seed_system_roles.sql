@@ -1,6 +1,0 @@
-INSERT INTO t_p83864310_fintech_payment_reco.roles (slug, name, description, color, scope, modules, permissions, is_system, sort_order) VALUES
-('platform_admin', 'Администратор платформы', 'Полный доступ к управлению платформой: компании, роли, тарифы, подписки', 'bg-primary', 'platform', '["platform_companies","platform_roles","platform_tariffs","platform_subscriptions","platform_users"]', '["full_access"]', true, 0),
-('owner', 'Владелец компании', 'Полный доступ ко всем модулям и управлению компанией', 'bg-primary', 'company', '["dashboard","payments","receipts","reconciliation","integrations","access","settings"]', '["full_access","manage_users","manage_roles","remove_data"]', true, 1),
-('admin', 'Администратор', 'Управление пользователями и всеми модулями компании', 'bg-info', 'company', '["dashboard","payments","receipts","reconciliation","integrations","access"]', '["view_all","edit_all","manage_users"]', true, 2),
-('accountant', 'Бухгалтер', 'Просмотр и работа с платежами, чеками и сверкой', 'bg-success', 'company', '["dashboard","payments","receipts","reconciliation"]', '["view_all","edit_payments","export_data"]', true, 3),
-('operator', 'Оператор', 'Ограниченный доступ к платежам и чекам', 'bg-warning', 'company', '["dashboard","payments","receipts"]', '["view_own","edit_own"]', true, 4);

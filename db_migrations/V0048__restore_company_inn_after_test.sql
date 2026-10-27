@@ -1,1 +1,0 @@
-UPDATE t_p83864310_fintech_payment_reco.companies SET inn = '643890985437' WHERE id = 2;

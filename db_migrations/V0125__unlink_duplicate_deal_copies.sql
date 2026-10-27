@@ -1,1 +1,0 @@
-UPDATE t_p83864310_fintech_payment_reco.crm_deals SET linked_receipt_id = NULL, linked_at = NULL WHERE external_deal_id IN ('48330','48332') AND linked_receipt_id = 870;

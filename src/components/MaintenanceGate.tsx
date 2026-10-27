@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from "@/lib/router-compat";
 import { useAuth } from '@/contexts/AuthContext';
 import MaintenancePage from '@/pages/MaintenancePage';
 import functionUrls from '../../backend/func2url.json';

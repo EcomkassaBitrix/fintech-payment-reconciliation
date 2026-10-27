@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from "@/lib/router-compat";
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import AdminCompaniesSection from '@/components/admin/AdminCompaniesSection';
 import AdminRolesSection from '@/components/admin/AdminRolesSection';

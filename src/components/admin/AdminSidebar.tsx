@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "@/lib/router-compat";
 import Icon from '@/components/ui/icon';
 import { ADMIN_SECTIONS } from '@/config/adminSections';
 

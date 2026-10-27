@@ -1,2 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.tariffs ADD COLUMN IF NOT EXISTS trial_days integer NOT NULL DEFAULT 0;
-UPDATE t_p83864310_fintech_payment_reco.tariffs SET trial_days = period_days WHERE slug = 'trial';

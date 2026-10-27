@@ -1,2 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.automation_action_templates ADD COLUMN vat varchar(20) NULL;
-COMMENT ON COLUMN t_p83864310_fintech_payment_reco.automation_action_templates.vat IS 'Ставка НДС для позиций, когда у источника нет корзины (none, vat0, vat5, vat7, vat10, vat20, vat22, vat105...)';

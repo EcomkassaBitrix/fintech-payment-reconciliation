@@ -1,1 +1,0 @@
-ALTER TABLE t_p83864310_fintech_payment_reco.platform_settings ADD COLUMN IF NOT EXISTS cron_intervals jsonb NOT NULL DEFAULT '{}'::jsonb;

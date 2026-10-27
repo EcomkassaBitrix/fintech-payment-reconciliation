@@ -1,2 +1,0 @@
-UPDATE t_p83864310_fintech_payment_reco.automation_action_templates SET correction_base_number = 'ТЕСТ-1' WHERE code = 'correction' AND correction_base_number IS NULL;
-UPDATE t_p83864310_fintech_payment_reco.automation_scenarios SET field_mapping = '{"delay_minutes": 60}'::jsonb, status = 'active', updated_at = NOW() WHERE id = 13 AND company_id = 4;
