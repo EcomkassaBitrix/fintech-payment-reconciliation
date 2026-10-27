@@ -103,7 +103,9 @@ const CreateCompany = () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        if (data.trial_started) reachGoal(GOALS.trialStarted);
+        if (data.trial_started) {
+          reachGoal(GOALS.trialStarted, { tariff: data.trial_tariff_slug, tariff_name: data.trial_tariff_name });
+        }
         forgetTariff();
         startOnboarding(data.company_id);
         await refreshCompanies();

@@ -33,8 +33,7 @@ export const ecomPurchase = (orderId: string, t: EcomTariff, yearly: boolean, re
 export const GOALS = {
   registration: 'registration',
   trialStarted: 'trial_started',
-  paidStart: 'tariff_paid_start',
-  paidBusiness: 'tariff_paid_business',
+  tariffPaid: 'tariff_paid',
   integrationAdded: 'integration_added',
   scenarioAdded: 'scenario_added',
   userInvited: 'user_invited'

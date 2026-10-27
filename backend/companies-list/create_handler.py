@@ -171,10 +171,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         tariff_row = None
         chosen = str(body.get('tariff_slug') or '').strip()
         if chosen:
-            cur.execute("SELECT id, trial_days FROM tariffs WHERE slug = %s AND is_active = true AND trial_days > 0", (chosen,))
+            cur.execute("SELECT id, trial_days, slug, name FROM tariffs WHERE slug = %s AND is_active = true AND trial_days > 0", (chosen,))
             tariff_row = cur.fetchone()
         if not tariff_row:
-            cur.execute("SELECT id, CASE WHEN trial_days > 0 THEN trial_days ELSE period_days END FROM tariffs WHERE slug = 'trial'")
+            cur.execute("SELECT id, CASE WHEN trial_days > 0 THEN trial_days ELSE period_days END, slug, name FROM tariffs WHERE slug = 'trial'")
             tariff_row = cur.fetchone()
 
         if tariff_row:
@@ -200,7 +200,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'role_slug': 'owner',
                 'role_name': role_name,
                 'role_color': role_color,
-                'trial_started': bool(tariff_row)
+                'trial_started': bool(tariff_row),
+                'trial_tariff_slug': tariff_row[2] if tariff_row else None,
+                'trial_tariff_name': tariff_row[3] if tariff_row else None
             }),
             'isBase64Encoded': False
         }

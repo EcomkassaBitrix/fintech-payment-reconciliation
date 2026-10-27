@@ -56,17 +56,15 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const STORAGE_USER_KEY = 'ek_user';
 const STORAGE_COMPANY_KEY = 'ek_current_company_id';
 
-// Оплата тарифа: онлайн-оплаты нет, тариф проводит админка. Цель срабатывает у владельца,
-// когда он видит активный платный период впервые (один раз на компанию и период).
+// Оплата тарифа: одна цель для любого тарифа, какой именно - в параметрах цели.
+// Срабатывает у владельца, когда он видит активный платный период впервые (один раз на компанию и период).
 const trackPaidTariffs = (list: Company[]) => {
   list.forEach((c) => {
     if (c.role_slug !== 'owner' || c.subscription_status !== 'active' || !c.current_period_end) return;
-    const goal = c.tariff_slug === 'start' ? GOALS.paidStart : c.tariff_slug === 'business' ? GOALS.paidBusiness : null;
-    if (!goal) return;
     const key = `ym_paid_${c.id}_${c.tariff_slug}_${c.current_period_end.slice(0, 10)}`;
     if (localStorage.getItem(key)) return;
     localStorage.setItem(key, '1');
-    reachGoal(goal, { company_id: c.id });
+    reachGoal(GOALS.tariffPaid, { company_id: c.id, tariff: c.tariff_slug, tariff_name: c.tariff_name });
   });
 };
 
