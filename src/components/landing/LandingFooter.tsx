@@ -27,7 +27,7 @@ const LandingFooter = ({ showCases = false }: { showCases?: boolean }) => {
     { href: '/#how-it-works', label: 'Как это работает' },
     { href: '/app?section=integrations', label: 'Интеграции' },
     ...(showCases ? [{ href: '/#cases', label: 'Кейсы' }] : []),
-    { href: '/#pricing', label: 'Тарифы' }
+    { href: '/pricing', label: 'Тарифы' }
   ];
 
   return (

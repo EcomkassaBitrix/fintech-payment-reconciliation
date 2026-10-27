@@ -17,6 +17,7 @@ import { Route as LegalRouteImport } from './routes/legal'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OfferRouteImport } from './routes/offer'
 import { Route as PaymentRouteImport } from './routes/payment'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as OauthTochkaRouteImport } from './routes/oauth.tochka'
@@ -64,6 +65,11 @@ const PaymentRoute = PaymentRouteImport.update({
   path: '/payment',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/offer': typeof OfferRoute
   '/payment': typeof PaymentRoute
+  '/pricing': typeof PricingRoute
   '/terms': typeof TermsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/oauth/tochka': typeof OauthTochkaRoute
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/offer': typeof OfferRoute
   '/payment': typeof PaymentRoute
+  '/pricing': typeof PricingRoute
   '/terms': typeof TermsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/oauth/tochka': typeof OauthTochkaRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/offer': typeof OfferRoute
   '/payment': typeof PaymentRoute
+  '/pricing': typeof PricingRoute
   '/terms': typeof TermsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/oauth/tochka': typeof OauthTochkaRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/offer'
     | '/payment'
+    | '/pricing'
     | '/terms'
     | '/invite/$token'
     | '/oauth/tochka'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/offer'
     | '/payment'
+    | '/pricing'
     | '/terms'
     | '/invite/$token'
     | '/oauth/tochka'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/offer'
     | '/payment'
+    | '/pricing'
     | '/terms'
     | '/invite/$token'
     | '/oauth/tochka'
@@ -205,6 +217,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OfferRoute: typeof OfferRoute
   PaymentRoute: typeof PaymentRoute
+  PricingRoute: typeof PricingRoute
   TermsRoute: typeof TermsRoute
   InviteTokenRoute: typeof InviteTokenRoute
   OauthTochkaRoute: typeof OauthTochkaRoute
@@ -271,6 +284,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PaymentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/terms': {
       id: '/terms'
       path: '/terms'
@@ -325,6 +345,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OfferRoute: OfferRoute,
   PaymentRoute: PaymentRoute,
+  PricingRoute: PricingRoute,
   TermsRoute: TermsRoute,
   InviteTokenRoute: InviteTokenRoute,
   OauthTochkaRoute: OauthTochkaRoute,

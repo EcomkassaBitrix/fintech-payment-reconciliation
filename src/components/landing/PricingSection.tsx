@@ -59,7 +59,15 @@ const FALLBACK_TARIFFS: Tariff[] = [
   }
 ];
 
-const PricingSection = ({ onCtaClick, trialDays, tariffs: loaded }: { onCtaClick: () => void; trialDays: number; tariffs: Tariff[] | null }) => {
+interface PricingSectionProps {
+  onCtaClick: () => void;
+  trialDays: number;
+  tariffs: Tariff[] | null;
+  asPage?: boolean;
+}
+
+const PricingSection = ({ onCtaClick, trialDays, tariffs: loaded, asPage = false }: PricingSectionProps) => {
+  const Heading = asPage ? 'h1' : 'h2';
   const tariffs = loaded ?? FALLBACK_TARIFFS;
   const trialLabel = pluralDays(trialDays);
   const [yearly, setYearly] = useState(false);
@@ -78,9 +86,9 @@ const PricingSection = ({ onCtaClick, trialDays, tariffs: loaded }: { onCtaClick
     <section id="pricing" className="py-20 sm:py-28 bg-card/30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-2xl mx-auto mb-16">
-          <h2 className="text-3xl sm:text-4xl font-display font-bold text-foreground mb-4">
-            Простые и понятные тарифы
-          </h2>
+          <Heading className="text-3xl sm:text-4xl font-display font-bold text-foreground mb-4">
+            {asPage ? 'Тарифы и цены Сверки' : 'Простые и понятные тарифы'}
+          </Heading>
           <p className="text-lg text-muted-foreground">
             Начните с бесплатного периода, растите — переключайтесь на тариф с бо́льшим числом функций для бизнеса.
           </p>
