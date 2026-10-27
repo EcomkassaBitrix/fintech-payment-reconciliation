@@ -240,7 +240,7 @@ def load_settings(cur) -> Dict[str, Any]:
         SELECT s.managing_company_id, c.name, c.inn, s.cron_enabled, s.cron_token,
                s.cron_last_tick_at, s.cron_last_result, s.updated_at, s.metrika_counter_id, s.cron_sources, s.cron_intervals,
                s.maintenance_enabled, s.maintenance_message, s.maintenance_until, s.messenger_api_url,
-               s.contact_email, s.contact_phone, u.email, u.phone, s.contact_address, c.legal_address
+               s.contact_email, s.contact_phone, u.email, u.phone, s.contact_address, c.legal_address, s.metrika_script
         FROM {SCHEMA}.platform_settings s
         LEFT JOIN LATERAL (
             SELECT au.email, au.phone FROM {SCHEMA}.company_users cu
@@ -263,6 +263,7 @@ def load_settings(cur) -> Dict[str, Any]:
         'contact_email': r[15], 'contact_phone': r[16],
         'contact_email_default': r[17], 'contact_phone_default': r[18],
         'contact_address': r[19], 'contact_address_default': r[20],
+        'metrika_script': r[21],
     }
 
 
@@ -727,7 +728,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     GET ?requester_user_id=&section=banners - все баннеры для редактирования
     POST {action: "save_banner", requester_user_id, page, text, button_text, button_url, variant, is_active}
     POST {action: "save", requester_user_id, managing_company_id, contact_email, contact_phone, contact_address, cron_enabled,
-          metrika_counter_id, messenger_api_url} - почта/телефон пусто - владельца управляющей компании, адрес пусто - юр. адрес компании
+          metrika_counter_id, metrika_script, messenger_api_url} - почта/телефон пусто - владельца управляющей компании, адрес пусто - юр. адрес компании
     POST {action: "save_maintenance", requester_user_id, maintenance_enabled, maintenance_message, maintenance_until}
          - режим техработ: сайт показывает заглушку всем, кроме администраторов платформы
     GET ?requester_user_id=&section=admins - сотрудники компании платформы и доступ к админке
@@ -790,6 +791,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 'email': settings.get('contact_email') or settings.get('contact_email_default'),
                                 'phone': settings.get('contact_phone') or settings.get('contact_phone_default')}
             return respond(200, {'success': True, 'metrika_counter_id': settings.get('metrika_counter_id'),
+                                 'metrika_script': settings.get('metrika_script'),
                                  'operator': operator, 'maintenance': {
                                      'enabled': settings['maintenance_enabled'],
                                      'message': settings['maintenance_message'],
@@ -914,6 +916,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 if not cur.fetchone():
                     return respond(400, {'error': 'Компания не найдена'})
             metrika = re.sub(r'\D', '', str(body.get('metrika_counter_id') or ''))[:20] or None
+            metrika_script = (str(body['metrika_script'] or '').strip()[:20000] or None) if 'metrika_script' in body else settings.get('metrika_script')
+            if metrika_script:
+                found = re.search(r'ym\(\s*(\d+)\s*,\s*[\'"]init', metrika_script)
+                if not found or 'mc.yandex.ru/metrika/tag.js' not in metrika_script:
+                    return respond(400, {'error': 'Это не похоже на код счётчика Яндекс Метрики: вставьте код целиком из настроек счётчика'})
+                metrika = found.group(1)
             messenger = (str(body['messenger_api_url'] or '').strip().rstrip('/')[:500] or None) if 'messenger_api_url' in body else settings.get('messenger_api_url')
             if messenger and not re.match(r'^https://[^\s/]+\.[^\s]+$', messenger):
                 return respond(400, {'error': 'Адрес отправки должен начинаться с https://'})
@@ -930,10 +938,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             address = (str(body['contact_address'] or '').strip()[:500] or None) if 'contact_address' in body else settings.get('contact_address')
             cur.execute(f'''
                 UPDATE {SCHEMA}.platform_settings
-                SET contact_address = %s, contact_email = %s, contact_phone = %s, managing_company_id = %s, cron_enabled = %s, metrika_counter_id = %s, cron_sources = %s, cron_intervals = %s,
+                SET contact_address = %s, contact_email = %s, contact_phone = %s, managing_company_id = %s, cron_enabled = %s, metrika_counter_id = %s, metrika_script = %s, cron_sources = %s, cron_intervals = %s,
                     messenger_api_url = %s, updated_by = %s, updated_at = NOW()
                 WHERE id = 1
-            ''', (address, email, phone, company_id or None, bool(body.get('cron_enabled')), metrika, json.dumps(sources), json.dumps(intervals), messenger, requester))
+            ''', (address, email, phone, company_id or None, bool(body.get('cron_enabled')), metrika, metrika_script, json.dumps(sources), json.dumps(intervals), messenger, requester))
             conn.commit()
             settings = load_settings(cur)
 

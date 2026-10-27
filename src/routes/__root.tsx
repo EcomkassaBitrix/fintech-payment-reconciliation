@@ -12,6 +12,7 @@ import YandexMetrika from "@/components/YandexMetrika";
 import PendingPromoActivator from "@/components/PendingPromoActivator";
 import NotFoundPage from "@/pages/NotFoundPage";
 import {installSessionFetch} from "@/lib/session";
+import {loadMetrika} from "@/lib/metrikaScript";
 import {PLATFORM_META, PLATFORM_SCRIPTS} from "@/platform/scripts.gen";
 import {HMR_CLIENT} from "@/platform/dev-hmr";
 import appCss from "@/index.css?url";
@@ -24,19 +25,11 @@ const DESCRIPTION = "Сверяет все платежи с чекам без �
 const OG_IMAGE = "https://cdn.poehali.dev/projects/***/files/og-image-1791745310357.png";
 const FAVICON = "https://cdn.poehali.dev/projects/***/files/favicon-1790957337649.jpg";
 
-const METRIKA_ID = 113249997;
-const METRIKA = `(function (m, e, t, r, i, k, a) {
-    m[i] = m[i] || function () { (m[i].a = m[i].a || []).push(arguments) };
-    m[i].l = 1 * new Date();
-    for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) { return; } }
-    k = e.createElement(t), a = e.getElementsByTagName(t)[0], k.async = 1, k.src = r, a.parentNode.insertBefore(k, a)
-})(window, document, "script", "https://mc.yandex.ru/metrika/tag.js?id=${METRIKA_ID}", "ym");
-window.dataLayer = window.dataLayer || [];
-window.__ymCounterId = ${METRIKA_ID};
-ym(${METRIKA_ID}, "init", { ssr: true, webvisor: true, clickmap: true, ecommerce: "dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce: true, trackLinks: true });`;
-
 export const Route = createRootRoute({
-    head: () => ({
+    loader: () => loadMetrika(),
+    staleTime: Infinity,
+    shouldReload: false,
+    head: ({loaderData}) => ({
         meta: [
             {charSet: "utf-8"},
             {name: "viewport", content: "width=device-width, initial-scale=1.0"},
@@ -61,7 +54,8 @@ export const Route = createRootRoute({
         scripts: [
             ...(import.meta.env.DEV ? [{children: HMR_CLIENT}] : []),
             ...PLATFORM_SCRIPTS,
-            {children: METRIKA},
+            ...(loaderData?.inline ?? []).map((children) => ({children})),
+            ...(loaderData?.srcs ?? []).map((src) => ({src, async: true})),
         ],
     }),
     component: RootComponent,
@@ -92,12 +86,14 @@ function RootComponent() {
 }
 
 function RootDocument({children}: { children: ReactNode }) {
+    const metrika = Route.useLoaderData();
     return (
         <html lang="ru">
         <head>
             <HeadContent/>
         </head>
         <body>
+        {metrika?.noscript ? <noscript dangerouslySetInnerHTML={{__html: metrika.noscript}}/> : null}
         {children}
         <Scripts/>
         </body>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +24,7 @@ interface PlatformSettings {
   cron_last_tick_at: string | null;
   cron_last_result: { companies: number; failed: number } | null;
   metrika_counter_id: string | null;
+  metrika_script: string | null;
   cron_sources: Record<string, boolean>;
   maintenance_enabled: boolean;
   maintenance_message: string | null;
@@ -53,6 +55,7 @@ const AdminSettingsSection = () => {
   const [managingId, setManagingId] = useState<string>('');
   const [cronEnabled, setCronEnabled] = useState(false);
   const [metrikaId, setMetrikaId] = useState('');
+  const [metrikaScript, setMetrikaScript] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactAddress, setContactAddress] = useState('');
@@ -75,6 +78,7 @@ const AdminSettingsSection = () => {
     setManagingId(data.settings.managing_company_id ? String(data.settings.managing_company_id) : '');
     setCronEnabled(data.settings.cron_enabled);
     setMetrikaId(data.settings.metrika_counter_id || '');
+    setMetrikaScript(data.settings.metrika_script || '');
     setContactEmail(data.settings.contact_email || '');
     setContactPhone(data.settings.contact_phone || '');
     setContactAddress(data.settings.contact_address || '');
@@ -122,6 +126,7 @@ const AdminSettingsSection = () => {
           managing_company_id: managingId ? Number(managingId) : null,
           cron_enabled: cronEnabled,
           metrika_counter_id: metrikaId || null,
+          metrika_script: metrikaScript.trim() || null,
           contact_email: contactEmail.trim() || null,
           contact_phone: contactPhone.trim() || null,
           contact_address: contactAddress.trim() || null,
@@ -188,6 +193,7 @@ const AdminSettingsSection = () => {
   const hasChanges = companyChanges
     || cronEnabled !== settings.cron_enabled
     || metrikaId !== (settings.metrika_counter_id || '')
+    || metrikaScript.trim() !== (settings.metrika_script || '')
     || sources.some((s) => sourceValues[s.key] !== s.enabled || sourceIntervals[s.key] !== s.interval);
   const tickCommand = `curl -s -X POST ${api} -H 'Content-Type: application/json' -H 'X-Cron-Token: ${settings.cron_token}' -d '{"action":"tick"}'`;
 
@@ -269,20 +275,40 @@ const AdminSettingsSection = () => {
             Яндекс Метрика
           </CardTitle>
           <CardDescription>
-            Номер счётчика из кабинета Метрики — сайт подключит его на всех страницах. Пусто — счётчик выключен.
+            Код счётчика целиком или только его номер — сайт подключит счётчик в начале каждой страницы. Оба поля пусты — счётчик выключен.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <Input
-            value={metrikaId}
-            onChange={(e) => setMetrikaId(e.target.value.replace(/\D/g, '').slice(0, 20))}
-            placeholder="Например, 12345678"
-            inputMode="numeric"
-            className="max-w-xs font-mono"
-          />
-          <p className="text-xs text-muted-foreground">
-            Номер — цифры в названии счётчика на metrika.yandex.ru. Применится у посетителей после обновления страницы.
-          </p>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Код счётчика</Label>
+            <Textarea
+              value={metrikaScript}
+              onChange={(e) => setMetrikaScript(e.target.value)}
+              placeholder={'<!-- Yandex.Metrika counter -->\n<script type="text/javascript">…</script>\n<!-- /Yandex.Metrika counter -->'}
+              rows={10}
+              spellCheck={false}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Скопируйте код из Метрики: «Настройки счётчика» → «Код счётчика». Он вставляется на сайт как есть, с Вебвизором
+              и всеми выбранными там опциями, а номер ниже подставится из кода сам.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Номер счётчика</Label>
+            <Input
+              value={metrikaId}
+              onChange={(e) => setMetrikaId(e.target.value.replace(/\D/g, '').slice(0, 20))}
+              placeholder="Например, 12345678"
+              inputMode="numeric"
+              disabled={!!metrikaScript.trim()}
+              className="max-w-xs font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Нужен, только если код выше не вставлен — тогда счётчик подключится со стандартными настройками.
+              Изменения видны на опубликованном сайте сразу после сохранения.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
