@@ -177,6 +177,8 @@ def cron_sources_view(cur, settings: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 # Интервал (мин) для внешнего планировщика - показывается в админке.
 CRON_INTERVAL_MIN = 1
+# Тревога «планировщик не запускался» - если тишина дольше этого (задание на сервере ходит раз в 15 мин).
+CRON_STALE_MIN = 20
 
 
 def automation_queue_view(cur) -> Dict[str, Any]:
@@ -651,6 +653,102 @@ def tick(cur, conn, settings: Dict[str, Any]) -> Dict[str, Any]:
     return summary
 
 
+def cron_payload(cur, settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Всё для раздела «Фоновые задачи» админки."""
+    return {
+        'success': True,
+        'cron_enabled': bool(settings['cron_enabled']),
+        'cron_token': settings['cron_token'],
+        'cron_last_tick_at': settings['cron_last_tick_at'],
+        'cron_last_result': settings['cron_last_result'],
+        'cron_interval_min': CRON_INTERVAL_MIN,
+        'cron_problems': check_cron(settings),
+        'cron_sources': cron_sources_view(cur, settings),
+        'automation_queue': automation_queue_view(cur),
+    }
+
+
+def run_now(cur, conn, source: str) -> Tuple[int, List[str]]:
+    """
+    Ручной запуск одной задачи по всем компаниям сразу, без учёта частоты из настроек.
+    Итог каждого вызова попадает в журнал как у планировщика (cron_tick) - его видно в списке.
+    """
+    def companies_with(slugs: List[str]) -> List[int]:
+        cur.execute(f'''
+            SELECT DISTINCT ui.company_id FROM {SCHEMA}.user_integrations ui
+            JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
+            JOIN {SCHEMA}.companies c ON c.id = ui.company_id
+            WHERE p.slug = ANY(%s) AND ui.status = 'active' AND c.status = 'active'
+              AND c.id NOT IN ({BLOCKED_COMPANIES_SQL})
+            ORDER BY 1
+        ''', (slugs,))
+        return [r[0] for r in cur.fetchall()]
+
+    tasks: List[Tuple[int, str, Dict[str, Any]]] = []
+    if source == 'ofd':
+        tasks = [(cid, OFD_URL, {'company_id': cid}) for cid in companies_with(['ofdru'])]
+    elif source == 'ecomkassa':
+        tasks = [(cid, FETCH_ORDERS_URL, {'company_id': cid, 'auto_hours': ECOMKASSA_AUTO_HOURS,
+                                          'order_types': ['INVC', 'CORD', 'VCHR'], 'statuses': ['PAID', 'COMPLETED'],
+                                          'batch_size': 30}) for cid in companies_with(['ecomkassa'])]
+    elif source == 'ecomkassa_receipts':
+        date_from = (datetime.utcnow() - timedelta(hours=ECOMKASSA_AUTO_HOURS)).isoformat()
+        date_to = (datetime.utcnow() + timedelta(minutes=5)).isoformat()
+        for cid in companies_with(['ecomkassa']):
+            tasks.append((cid, RESYNC_URL, {'company_id': cid}))
+            tasks.append((cid, FETCH_ORDERS_URL, {'company_id': cid, 'only_new': True, 'date_from': date_from,
+                                                  'date_to': date_to, 'order_types': ['INVC', 'CORD', 'VCHR'],
+                                                  'statuses': ['PAID', 'COMPLETED'], 'batch_size': 30,
+                                                  'cron_source': 'ecomkassa_receipts', 'cron_item': 'search'}))
+    elif source == 'bank':
+        cur.execute(f'''
+            SELECT ui.id, ui.company_id,
+                   to_char(COALESCE(ui.last_synced_at, NOW() - INTERVAL '3 days') + INTERVAL '3 hours' - INTERVAL '1 day', 'YYYY-MM-DD'),
+                   to_char(NOW() + INTERVAL '3 hours', 'YYYY-MM-DD')
+            FROM {SCHEMA}.user_integrations ui
+            JOIN {SCHEMA}.integration_providers p ON p.id = ui.provider_id
+            JOIN {SCHEMA}.companies c ON c.id = ui.company_id
+            WHERE p.slug IN ('tbank_account', 'tochka_account') AND ui.status = 'active' AND c.status = 'active'
+              AND c.id NOT IN ({BLOCKED_COMPANIES_SQL})
+        ''')
+        tasks = [(cid, BANK_URL, {'integration_id': iid, 'company_id': cid, 'date_from': d_from, 'date_to': d_to})
+                 for iid, cid, d_from, d_to in cur.fetchall()]
+    elif source == 'automation':
+        cur.execute(f'''
+            SELECT c.id FROM {SCHEMA}.companies c
+            WHERE c.status = 'active' AND c.id NOT IN ({BLOCKED_COMPANIES_SQL})
+              AND (EXISTS (SELECT 1 FROM {SCHEMA}.automation_scenarios s
+                           WHERE s.company_id = c.id AND s.status = 'active' AND s.removed_at IS NULL)
+                   OR EXISTS (SELECT 1 FROM {SCHEMA}.automation_jobs j
+                              WHERE j.company_id = c.id AND j.status IN ('new', 'error', 'processing')))
+            ORDER BY 1
+        ''')
+        tasks = [(r[0], JOBS_URL, {'action': 'run', 'company_id': r[0], 'heartbeat': True}) for r in cur.fetchall()]
+        tasks.append((0, JOBS_URL, {'action': 'run'}))
+    elif source == 'subscriptions':
+        tasks = [(0, SUBSCRIPTION_URL, {'action': 'renew_due'})]
+    conn.commit()
+    if not tasks:
+        return 0, []
+
+    tick_id = 'manual' + datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    for _, _, task_body in tasks:
+        task_body['cron_tick'] = tick_id
+    # Лесенкой, как у планировщика: одновременный старт упирается в лимит запросов к базе.
+    step = min(0.4, 2.4 / len(tasks))
+    pool = ThreadPoolExecutor(max_workers=len(tasks))
+
+    def staggered(i, url, task_body):
+        time.sleep(i * step)
+        return call(url, task_body, 1.2)
+
+    futures = {pool.submit(staggered, i, t[1], t[2]): t[0] for i, t in enumerate(tasks)}
+    done, _ = wait(futures, timeout=1.6 + len(tasks) * step)
+    errors = [f'компания {futures[f]}: {f.result()}' for f in done if f.result()]
+    pool.shutdown(wait=False)
+    return len(tasks), errors[:5]
+
+
 def check_cron(settings: Dict[str, Any]) -> List[str]:
     '''Почему автоматический режим может не работать - для сообщения в админке.'''
     problems = []
@@ -661,7 +759,7 @@ def check_cron(settings: Dict[str, Any]) -> List[str]:
     if not last:
         problems.append('Планировщик ещё ни разу не вызывал запуск: задание на сервере не настроено. '
                         f'Добавьте его (раз в {CRON_INTERVAL_MIN} мин) по команде ниже.' + fallback)
-    elif last < datetime.utcnow() - timedelta(minutes=5):
+    elif last < datetime.utcnow() - timedelta(minutes=CRON_STALE_MIN):
         problems.append(f'Планировщик не запускался с {last:%d.%m.%Y %H:%M} UTC - проверьте задание на сервере.' + fallback)
     result = settings.get('cron_last_result') or {}
     if result.get('failed'):
@@ -895,6 +993,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             conn.commit()
             return respond(200, {'success': True, 'messenger_api_url': messenger})
 
+        if method == 'POST' and body.get('action') == 'save_cron':
+            keys = {src['key'] for src in CRON_SOURCES}
+            sources = {k: bool(v) for k, v in (body.get('cron_sources') or {}).items() if k in keys}
+            intervals = {k: v for k, v in (body.get('cron_intervals') or {}).items() if k in keys and v in INTERVAL_PRESETS}
+            cur.execute(f'''
+                UPDATE {SCHEMA}.platform_settings
+                SET cron_enabled = %s, cron_sources = %s, cron_intervals = %s, updated_by = %s, updated_at = NOW()
+                WHERE id = 1
+            ''', (bool(body.get('cron_enabled')), json.dumps(sources), json.dumps(intervals), requester))
+            conn.commit()
+            settings = load_settings(cur)
+            return respond(200, cron_payload(cur, settings))
+
+        if method == 'POST' and body.get('action') == 'run_now':
+            source = body.get('source')
+            if source not in {src['key'] for src in CRON_SOURCES}:
+                return respond(400, {'error': 'Неизвестная задача'})
+            started, errors = run_now(cur, conn, source)
+            settings = load_settings(cur)
+            return respond(200, {**cron_payload(cur, settings), 'started': started, 'errors': errors})
+
+        if method == 'GET' and params.get('section') == 'cron':
+            return respond(200, cron_payload(cur, settings))
+
         if method == 'POST' and body.get('action') == 'save_maintenance':
             until = str(body.get('maintenance_until') or '').strip() or None
             cur.execute(f'''
@@ -941,7 +1063,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 SET contact_address = %s, contact_email = %s, contact_phone = %s, managing_company_id = %s, cron_enabled = %s, metrika_counter_id = %s, metrika_script = %s, cron_sources = %s, cron_intervals = %s,
                     messenger_api_url = %s, updated_by = %s, updated_at = NOW()
                 WHERE id = 1
-            ''', (address, email, phone, company_id or None, bool(body.get('cron_enabled')), metrika, metrika_script, json.dumps(sources), json.dumps(intervals), messenger, requester))
+            ''', (address, email, phone, company_id or None, (bool(body['cron_enabled']) if 'cron_enabled' in body else bool(settings['cron_enabled'])), metrika, metrika_script, json.dumps(sources), json.dumps(intervals), messenger, requester))
             conn.commit()
             settings = load_settings(cur)
 

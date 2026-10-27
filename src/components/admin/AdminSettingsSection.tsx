@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,11 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatDateTime } from '@/lib/formatDate';
 import functionUrls from '../../../backend/func2url.json';
 import PlatformAdminsCard from './PlatformAdminsCard';
-import CronSourcesList, { CronSource } from './CronSourcesList';
-import AutomationQueueStats, { AutomationQueue } from './AutomationQueueStats';
 
 const api = (functionUrls as Record<string, string>)['platform-settings'];
 
@@ -50,43 +46,27 @@ const AdminSettingsSection = () => {
   const { toast } = useToast();
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [problems, setProblems] = useState<string[]>([]);
-  const [interval, setIntervalMin] = useState(1);
   const [managingId, setManagingId] = useState<string>('');
-  const [cronEnabled, setCronEnabled] = useState(false);
   const [metrikaId, setMetrikaId] = useState('');
   const [metrikaScript, setMetrikaScript] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactAddress, setContactAddress] = useState('');
   const [messengerUrl, setMessengerUrl] = useState('');
-  const [sources, setSources] = useState<CronSource[]>([]);
-  const [queue, setQueue] = useState<AutomationQueue | null>(null);
-  const [queueRefreshing, setQueueRefreshing] = useState(false);
-  const [sourceValues, setSourceValues] = useState<Record<string, boolean>>({});
-  const [sourceIntervals, setSourceIntervals] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingMessenger, setIsSavingMessenger] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const apply = (data: { settings: PlatformSettings; companies: CompanyOption[]; cron_problems: string[]; cron_interval_min: number; cron_sources?: CronSource[]; automation_queue?: AutomationQueue }) => {
-    setQueue(data.automation_queue || null);
+  const apply = (data: { settings: PlatformSettings; companies: CompanyOption[] }) => {
     setSettings(data.settings);
     setCompanies(data.companies || []);
-    setProblems(data.cron_problems || []);
-    setIntervalMin(data.cron_interval_min || 1);
     setManagingId(data.settings.managing_company_id ? String(data.settings.managing_company_id) : '');
-    setCronEnabled(data.settings.cron_enabled);
     setMetrikaId(data.settings.metrika_counter_id || '');
     setMetrikaScript(data.settings.metrika_script || '');
     setContactEmail(data.settings.contact_email || '');
     setContactPhone(data.settings.contact_phone || '');
     setContactAddress(data.settings.contact_address || '');
     setMessengerUrl(data.settings.messenger_api_url || '');
-    const list = data.cron_sources || [];
-    setSources(list);
-    setSourceValues(Object.fromEntries(list.map((s) => [s.key, s.enabled])));
-    setSourceIntervals(Object.fromEntries(list.map((s) => [s.key, s.interval])));
   };
 
   const load = useCallback(async () => {
@@ -96,18 +76,6 @@ const AdminSettingsSection = () => {
     if (res.ok) apply(data);
     else setError(data.error || 'Не удалось загрузить настройки');
   }, [user]);
-
-  const refreshQueue = async () => {
-    if (!user) return;
-    setQueueRefreshing(true);
-    try {
-      const res = await fetch(`${api}?requester_user_id=${user.user_id}`);
-      const data = await res.json();
-      if (res.ok) setQueue(data.automation_queue || null);
-    } finally {
-      setQueueRefreshing(false);
-    }
-  };
 
   useEffect(() => {
     load();
@@ -124,14 +92,11 @@ const AdminSettingsSection = () => {
           action: 'save',
           requester_user_id: user.user_id,
           managing_company_id: managingId ? Number(managingId) : null,
-          cron_enabled: cronEnabled,
           metrika_counter_id: metrikaId || null,
           metrika_script: metrikaScript.trim() || null,
           contact_email: contactEmail.trim() || null,
           contact_phone: contactPhone.trim() || null,
-          contact_address: contactAddress.trim() || null,
-          cron_sources: sourceValues,
-          cron_intervals: sourceIntervals
+          contact_address: contactAddress.trim() || null
         })
       });
       const data = await res.json();
@@ -139,7 +104,7 @@ const AdminSettingsSection = () => {
         apply(data);
         toast({
           title: 'Настройки сохранены',
-          description: 'Кабинеты клиентов применят режим запуска после обновления страницы'
+          description: 'Изменения применены'
         });
       } else {
         toast({ title: 'Ошибка', description: data.error, variant: 'destructive' });
@@ -171,10 +136,6 @@ const AdminSettingsSection = () => {
     }
   };
 
-  const copy = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => toast({ title: 'Скопировано' }));
-  };
-
   if (error) {
     return <div className="text-destructive">{error}</div>;
   }
@@ -191,11 +152,8 @@ const AdminSettingsSection = () => {
     || contactPhone.trim() !== (settings.contact_phone || '')
     || contactAddress.trim() !== (settings.contact_address || '');
   const hasChanges = companyChanges
-    || cronEnabled !== settings.cron_enabled
     || metrikaId !== (settings.metrika_counter_id || '')
-    || metrikaScript.trim() !== (settings.metrika_script || '')
-    || sources.some((s) => sourceValues[s.key] !== s.enabled || sourceIntervals[s.key] !== s.interval);
-  const tickCommand = `curl -s -X POST ${api} -H 'Content-Type: application/json' -H 'X-Cron-Token: ${settings.cron_token}' -d '{"action":"tick"}'`;
+    || metrikaScript.trim() !== (settings.metrika_script || '');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -344,85 +302,6 @@ const AdminSettingsSection = () => {
             Пусто — используется адрес по умолчанию: <span className="font-mono break-all">{settings.messenger_api_url_default}</span>.
             Новый адрес применяется сразу после сохранения. Ключ доступа к сервису (MESSENGER_API_KEY) остаётся прежним.
           </p>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border bg-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Icon name="Timer" size={20} />
-            Фоновые задачи
-          </CardTitle>
-          <CardDescription>
-            Очередь автоматизации, повторы сценариев, рассылка уведомлений, проверка «платежи без чека», дозагрузка чеков кассы
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <label className="flex items-start gap-3">
-            <Checkbox checked={cronEnabled} onCheckedChange={(v) => setCronEnabled(Boolean(v))} className="mt-0.5" />
-            <span>
-              <span className="text-sm font-medium">Активировать работу по cron</span>
-              <span className="block text-xs text-muted-foreground">
-                Для всех клиентов: задачи запускает планировщик сервера по расписанию. Выключено — запуск при входе в кабинет,
-                открытии страниц и ручных действиях, как сейчас.
-              </span>
-            </span>
-          </label>
-
-          {settings.cron_enabled ? (
-            <div className="space-y-3 rounded-lg border border-border p-4">
-              <div className="text-sm font-medium">Задание для планировщика (раз в {interval} мин)</div>
-              <div className="flex items-start gap-2">
-                <code className="flex-1 break-all rounded bg-muted p-2 text-xs">{tickCommand}</code>
-                <Button size="icon" variant="ghost" onClick={() => copy(tickCommand)} title="Скопировать">
-                  <Icon name="Copy" size={16} />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Для crontab: <code className="rounded bg-muted px-1">* * * * * {'<команда выше>'}</code>
-              </p>
-              <div className="text-sm">
-                Последний запуск:{' '}
-                {settings.cron_last_tick_at ? (
-                  <>
-                    {formatDateTime(settings.cron_last_tick_at, undefined, true)}
-                    {settings.cron_last_result && (
-                      <span className="text-muted-foreground">
-                        {' '}· компаний: {settings.cron_last_result.companies}
-                        {settings.cron_last_result.failed > 0 && `, с ошибками: ${settings.cron_last_result.failed}`}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">ещё не было</span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-              <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
-              <span>Сейчас задачи запускаются из открытых кабинетов клиентов. Если кабинет никто не открывает, задачи ждут ближайшего входа.</span>
-            </div>
-          )}
-
-          {queue && <AutomationQueueStats queue={queue} onRefresh={refreshQueue} refreshing={queueRefreshing} />}
-
-          {sources.length > 0 && (
-            <CronSourcesList
-              sources={sources}
-              values={sourceValues}
-              intervals={sourceIntervals}
-              onChange={(key, enabled) => setSourceValues((prev) => ({ ...prev, [key]: enabled }))}
-              onIntervalChange={(key, value) => setSourceIntervals((prev) => ({ ...prev, [key]: value }))}
-            />
-          )}
-
-          {problems.map((p) => (
-            <div key={p} className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
-              <Icon name="AlertTriangle" size={16} className="mt-0.5 shrink-0 text-warning" />
-              <span>{p}</span>
-            </div>
-          ))}
         </CardContent>
       </Card>
 

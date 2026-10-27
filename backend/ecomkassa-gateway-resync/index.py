@@ -175,6 +175,29 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         conn.close()
 
 
+
+def _is_db_overload(text: str) -> bool:
+    return 'rate limit' in (text or '').lower()
+
+
+def _handle_with_retry(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    '''Перегрузка базы («rate limit exceeded») - временный сбой: ждём и повторяем, до 3 попыток.'''
+    import time
+    resp: Dict[str, Any] = {}
+    for attempt in range(3):
+        try:
+            resp = _handle(event, context)
+        except Exception as e:
+            if not _is_db_overload(str(e)) or attempt == 2:
+                raise
+            time.sleep(0.7 * (attempt + 1))
+            continue
+        if resp.get('statusCode', 200) >= 500 and _is_db_overload(str(resp.get('body'))) and attempt < 2:
+            time.sleep(0.7 * (attempt + 1))
+            continue
+        return resp
+    return resp
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''Точка входа: обработка запроса + итог для админки, если вызвал планировщик.'''
     denied = guard(event)
@@ -184,7 +207,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if blocked:
         return blocked
 
-    resp = _handle(event, context)
+    resp = _handle_with_retry(event, context)
     if event.get('httpMethod', 'POST') == 'POST':
         record_cron_run(event, resp, 'ecomkassa_receipts', 'resolved')
     return resp

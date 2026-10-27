@@ -1,6 +1,8 @@
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDateTime } from '@/lib/formatDate';
+import { Button } from '@/components/ui/button';
+import Icon from '@/components/ui/icon';
 
 export interface CronSourceIntegration {
   id: number;
@@ -42,12 +44,14 @@ interface Props {
   intervals: Record<string, string>;
   onChange: (key: string, enabled: boolean) => void;
   onIntervalChange: (key: string, interval: string) => void;
+  onRunNow?: (key: string) => void;
+  running?: string | null;
 }
 
 const lastSync = (src: CronSource) =>
   src.integrations.map((i) => i.last_synced_at).filter(Boolean).sort().pop() || null;
 
-const CronSourcesList = ({ sources, values, intervals, onChange, onIntervalChange }: Props) => (
+const CronSourcesList = ({ sources, values, intervals, onChange, onIntervalChange, onRunNow, running }: Props) => (
   <div className="space-y-2">
     <div className="text-sm font-medium">Что загружать автоматически</div>
     <div className="divide-y divide-border rounded-lg border border-border">
@@ -93,6 +97,22 @@ const CronSourcesList = ({ sources, values, intervals, onChange, onIntervalChang
                   ))}
                 </SelectContent>
               </Select>
+              {onRunNow && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-40 gap-1.5 text-xs"
+                  disabled={!!running}
+                  onClick={() => onRunNow(src.key)}
+                >
+                  <Icon
+                    name={running === src.key ? 'Loader2' : 'Play'}
+                    size={14}
+                    className={running === src.key ? 'animate-spin' : ''}
+                  />
+                  Загрузить сейчас
+                </Button>
+              )}
             </div>
           </div>
         );

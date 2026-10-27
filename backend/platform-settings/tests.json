@@ -52,6 +52,21 @@
         "error_code": "session_required"
       },
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Ручной запуск без входа закрыт",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "run_now",
+        "source": "ofd",
+        "requester_user_id": 1
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error_code": "session_required"
+      },
+      "bodyMatcher": "partial"
     }
   ]
 }
