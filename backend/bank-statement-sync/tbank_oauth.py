@@ -55,6 +55,14 @@ def exchange_code_for_token(code: str, redirect_uri: str) -> Optional[Dict[str, 
         return None
 
 
+def _as_datetime(value: str, end_of_day: bool) -> str:
+    '''«2026-10-15» -> «2026-10-15T00:00:00Z» (или 23:59:59Z для конца периода); дата со временем - как есть.'''
+    value = (value or '').strip()
+    if len(value) == 10:
+        return f"{value}T{'23:59:59' if end_of_day else '00:00:00'}Z"
+    return value
+
+
 def _request(path: str, access_token: str, base: str = API_BASE) -> Optional[Any]:
     if not access_token:
         return None
@@ -88,9 +96,11 @@ def fetch_statement(access_token: str, account_number: str, date_from: str,
                      date_to: Optional[str] = None,
                      cursor: Optional[str] = None) -> Optional[Dict[str, Any]]:
     '''Выписка по счёту через T-API (https://developer.tbank.ru/docs/products/account-info).'''
-    query = {'accountNumber': account_number, 'from': date_from}
+    # T-API принимает только дату со временем (date-time): «2026-10-15» отклоняется с VALIDATION_ERROR.
+    # Планировщик передаёт календарные дни - дополняем началом и концом дня.
+    query = {'accountNumber': account_number, 'from': _as_datetime(date_from, end_of_day=False)}
     if date_to:
-        query['to'] = date_to
+        query['to'] = _as_datetime(date_to, end_of_day=True)
     if cursor:
         query['cursor'] = cursor
 
