@@ -480,6 +480,40 @@ def _handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         conn.close()
 
 
+
+def _is_db_overload(text: str) -> bool:
+    return 'rate limit' in (text or '').lower()
+
+
+def _handle_with_retry(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    '''
+    Перегрузка базы («rate limit exceeded») - временный сбой: ждём и повторяем, до 3 попыток.
+    Загрузка в ОФД/банк сама идёт секунды, поэтому повторяем только если сбой случился быстро
+    (в начале работы) - иначе повтор не уложится в тайм-аут функции. Повтор безопасен:
+    при сбое транзакция откатывается, а дубли не пропускает уникальный ключ.
+    '''
+    import time
+    started = time.monotonic()
+    resp: Dict[str, Any] = {}
+    for attempt in range(3):
+        try:
+            resp = _handle(event, context)
+            overload = resp.get('statusCode', 200) >= 500 and _is_db_overload(str(resp.get('body')))
+            error = None
+        except Exception as e:
+            overload, error = _is_db_overload(str(e)), e
+        if not overload:
+            if error:
+                raise error
+            return resp
+        if attempt == 2 or time.monotonic() - started > 1.5:
+            if error:
+                raise error
+            return resp
+        time.sleep(0.5 * (attempt + 1))
+    return resp
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''Точка входа: обработка запроса + итог для админки, если вызвал планировщик.'''
     denied = guard(event)
@@ -489,7 +523,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if blocked:
         return blocked
 
-    resp = _handle(event, context)
+    resp = _handle_with_retry(event, context)
     if event.get('httpMethod', 'POST') == 'POST':
         record_cron_run(event, resp, 'bank', 'inserted')
     return resp
