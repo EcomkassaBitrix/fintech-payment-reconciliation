@@ -42,7 +42,10 @@ const TariffCompareTable = ({ tariffs }: { tariffs: TariffWithModules[] }) => {
       rows: [
         { label: 'Компаний', value: (t) => limit(t.max_companies) },
         { label: 'Пользователей', value: (t) => limit(t.max_users) },
-        { label: 'Интеграций', value: (t) => limit(t.max_integrations) }
+        { label: 'Интеграций', value: (t) => limit(t.max_integrations) },
+        ...(tariffs.some((t) => t.max_automations !== undefined)
+          ? [{ label: 'Сценариев автоматизации', value: (t: TariffWithModules) => limit(t.max_automations ?? null) }]
+          : [])
       ]
     },
     ...(hasModules

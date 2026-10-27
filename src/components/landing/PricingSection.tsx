@@ -17,6 +17,7 @@ export interface Tariff {
   max_companies: number | null;
   max_users: number | null;
   max_integrations: number | null;
+  max_automations?: number | null;
   features: string[];
   period_days?: number;
   yearly_discount_percent?: number;
@@ -181,6 +182,12 @@ const PricingSection = ({ onCtaClick, trialDays, tariffs: loaded, asPage = false
                       <Icon name="Check" size={16} className="text-primary shrink-0" />
                       {tariff.max_integrations == null ? 'Без ограничения интеграций' : `До ${tariff.max_integrations} интеграций`}
                     </li>
+                    {tariff.max_automations !== undefined && (
+                      <li className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Icon name="Check" size={16} className="text-primary shrink-0" />
+                        {tariff.max_automations == null ? 'Без ограничения автоматизаций' : `До ${tariff.max_automations} ${tariff.max_automations === 1 ? 'автоматизации' : 'автоматизаций'}`}
+                      </li>
+                    )}
                     {tariff.features.map((feature) => (
                       <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Icon name="Check" size={16} className="text-primary shrink-0" />

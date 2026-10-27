@@ -1,0 +1,1 @@
+UPDATE t_p83864310_fintech_payment_reco.tariffs SET features = '["Все модули", "Приоритетная поддержка"]'::jsonb WHERE slug = 'business';
