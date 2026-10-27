@@ -63,7 +63,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 t.name, t.max_users, c.timezone, r.modules,
                 t.modules, t.max_integrations, t.max_automations, c.is_platform_admin, cu.platform_admin, t.slug,
                 (NOT c.is_platform_admin AND (s.id IS NULL OR s.status NOT IN ('trial', 'active')
-                 OR COALESCE(CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END, 'infinity') < NOW()))
+                 OR COALESCE(CASE WHEN s.status = 'trial' THEN s.trial_ends_at ELSE s.current_period_end END, 'infinity') < NOW())),
+                t.id
             FROM company_users cu
             JOIN companies c ON c.id = cu.company_id
             JOIN roles r ON r.id = cu.role_id
@@ -88,6 +89,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'current_period_end': row[9].isoformat() if row[9] else None,
                 'tariff_name': row[10],
                 'tariff_slug': row[19],
+                'tariff_id': row[21],
                 'max_users': row[11],
                 'timezone': row[12] or 'Europe/Moscow',
                 'role_modules': row[13] or [],

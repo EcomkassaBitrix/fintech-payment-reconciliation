@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import functionUrls from '../../backend/func2url.json';
 import { getSessionToken, setSessionToken, clearSession } from '@/lib/session';
-import { GOALS, reachGoal } from '@/lib/metrika';
+import { GOALS, reachGoal, tariffPaidGoal } from '@/lib/metrika';
 
 export interface Company {
   id: number;
@@ -16,6 +16,7 @@ export interface Company {
   current_period_end?: string | null;
   tariff_name?: string | null;
   tariff_slug?: string | null;
+  tariff_id?: number | null;
   max_users?: number | null;
   timezone?: string;
   role_modules?: string[];
@@ -56,15 +57,15 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const STORAGE_USER_KEY = 'ek_user';
 const STORAGE_COMPANY_KEY = 'ek_current_company_id';
 
-// Оплата тарифа: одна цель для любого тарифа, какой именно - в параметрах цели.
+// Оплата тарифа: цель tariff{номер}_paid - своя на каждый тариф, номер тарифа в базе не меняется.
 // Срабатывает у владельца, когда он видит активный платный период впервые (один раз на компанию и период).
 const trackPaidTariffs = (list: Company[]) => {
   list.forEach((c) => {
-    if (c.role_slug !== 'owner' || c.subscription_status !== 'active' || !c.current_period_end) return;
+    if (c.role_slug !== 'owner' || c.subscription_status !== 'active' || !c.current_period_end || !c.tariff_id) return;
     const key = `ym_paid_${c.id}_${c.tariff_slug}_${c.current_period_end.slice(0, 10)}`;
     if (localStorage.getItem(key)) return;
     localStorage.setItem(key, '1');
-    reachGoal(GOALS.tariffPaid, { company_id: c.id, tariff: c.tariff_slug, tariff_name: c.tariff_name });
+    reachGoal(tariffPaidGoal(c.tariff_id), { company_id: c.id, tariff_name: c.tariff_name });
   });
 };
 
