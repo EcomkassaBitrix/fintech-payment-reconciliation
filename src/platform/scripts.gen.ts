@@ -8,5 +8,5 @@ export const PLATFORM_SCRIPTS: {src: string; defer?: boolean}[] = [
     {src: "https://cdn.poehali.dev/intertnal/js/pp-min-2.js"},
     {src: "https://cdn.poehali.dev/intertnal/js/route-min.js"},
     {src: "https://cdn.poehali.dev/intertnal/js/telemetry-min.js"},
-    {src: "https://cdn.poehali.dev/intertnal/js/ve-2.0.0-rc.2.min.js", defer: true},
+    {src: "https://cdn.poehali.dev/intertnal/js/ve.min.js", defer: true},
 ];

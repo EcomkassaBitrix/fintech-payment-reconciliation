@@ -514,12 +514,25 @@ def _handle_with_retry(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     return resp
 
 
+
+def _db_retry(fn, event: Dict[str, Any]):
+    '''Проверка доступа ходит в базу; при её перегрузке («rate limit») ждём и пробуем ещё раз, до 3 попыток.'''
+    import time
+    for attempt in range(3):
+        try:
+            return fn(event)
+        except Exception as e:
+            if attempt == 2 or 'rate limit' not in str(e).lower():
+                raise
+            time.sleep(0.4 * (attempt + 1))
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''Точка входа: обработка запроса + итог для админки, если вызвал планировщик.'''
-    denied = guard(event)
+    denied = _db_retry(guard, event)
     if denied:
         return denied
-    blocked = subscription_guard(event)
+    blocked = _db_retry(subscription_guard, event)
     if blocked:
         return blocked
 
